@@ -26,6 +26,12 @@ export function objectiveText(m) {
     if (!m.beachLanded) return 'Land on the BEACH STRIP — island 2 (west)';
     return 'Beach landing done — fly back, land on the MAIN RUNWAY';
   }
+  if (m.def.id === 'ember-circuit') {
+    if (m.ringsDone < m.ringsTotal) {
+      return `Ring ${m.ringsDone + 1} of ${m.ringsTotal} — Ember Circuit: thread the gates around the volcano`;
+    }
+    return 'Course complete — land on the MAIN RUNWAY';
+  }
   if (m.ringsDone < m.ringsTotal) {
     return `Ring ${m.ringsDone + 1} of ${m.ringsTotal} — circle Mount Ember, then land on the runway`;
   }
