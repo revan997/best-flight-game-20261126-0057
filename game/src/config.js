@@ -72,4 +72,14 @@ export const MISSIONS = [
     refuel: false,
     timeBonus: 0,
   },
+  {
+    id: 'ember-circuit',
+    name: 'Ember Circuit',
+    tag: '4',
+    briefing: "Thread the 8-ring course around Mount Ember's smoking cone on a tighter clock — 135 s, refuel ring live. Fast, low, and close to the volcano.",
+    rings: 8,
+    parTime: 135,
+    refuel: true,
+    timeBonus: 10,
+  },
 ];
