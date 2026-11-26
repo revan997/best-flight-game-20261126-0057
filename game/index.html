@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Ring Run — bush-plane ring course</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2a44;
+    font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  .hidden { display: none !important; }
+  .panel { background: rgba(8, 18, 34, 0.72); border: 1px solid rgba(255, 210, 74, 0.55);
+    border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(2px);
+    box-shadow: 0 0 14px rgba(255, 170, 60, 0.25), inset 0 0 18px rgba(255, 190, 80, 0.08); }
+  .label { font-size: 10px; letter-spacing: 2px; color: #ffd24a; opacity: 0.9; }
+  .big { font-size: 30px; font-weight: 800; line-height: 1; color: #fff;
+    text-shadow: 0 0 10px rgba(255, 210, 74, 0.7); font-variant-numeric: tabular-nums; }
+  .unit { font-size: 12px; color: #cfe3ff; }
+  .bar { height: 10px; background: rgba(255,255,255,0.15); border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  .bar > div { height: 100%; border-radius: 5px; transition: width 0.15s linear; }
+  #hud-throttle { background: linear-gradient(90deg, #37c8ff, #ffd24a); width: 0%; }
+  #hud-fuel { background: linear-gradient(90deg, #2aff66, #a8ff6a); width: 100%; }
+  #hud-fuel.low { background: linear-gradient(90deg, #ff3b30, #ff7a2a); }
+  #hud-damage { background: #2aff66; width: 0%; }
+  #hud-damage.high { background: #ff3b30; }
+
+  #hud-flight { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud-tl { position: absolute; top: 12px; left: 12px; min-width: 170px; }
+  #hud-tr { position: absolute; top: 12px; right: 12px; min-width: 170px; text-align: right; }
+  #hud-compass { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    text-align: center; min-width: 210px; }
+  #hud-heading { font-size: 26px; font-weight: 800; color: #ffd24a;
+    text-shadow: 0 0 10px rgba(255,210,74,0.8); }
+  #hud-objective { font-size: 12px; color: #eaf3ff; margin-top: 2px; }
+  #hud-horizon-wrap { position: absolute; left: 12px; bottom: 86px; text-align: center; }
+  #hud-horizon { border-radius: 50%; border: 2px solid rgba(255,210,74,0.6);
+    background: rgba(8,18,34,0.6); }
+  #hud-bottom { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px;
+    display: flex; gap: 10px; align-items: stretch; }
+  #hud-bottom .panel { min-width: 118px; text-align: center; }
+  #hud-crosshair { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+    width: 44px; height: 44px; opacity: 0.85; }
+  #hud-crosshair::before, #hud-crosshair::after { content: ''; position: absolute; background: #ffd24a;
+    box-shadow: 0 0 6px rgba(255,210,74,0.9); }
+  #hud-crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #hud-crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #hud-warning { position: absolute; left: 50%; top: 24%; transform: translateX(-50%);
+    font-size: 26px; font-weight: 900; color: #ff3b30; letter-spacing: 2px; display: none;
+    text-shadow: 0 0 16px rgba(255,59,48,0.9); animation: blink 0.5s steps(2) infinite; white-space: nowrap; }
+  #hud-warning.on { display: block; }
+  @keyframes blink { 50% { opacity: 0.35; } }
+  #hud-message { position: absolute; left: 50%; top: 34%; transform: translateX(-50%);
+    font-size: 20px; font-weight: 700; color: #7dff9a; display: none;
+    text-shadow: 0 0 12px rgba(0,0,0,0.8); white-space: nowrap; }
+  #hud-message.on { display: block; }
+
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center;
+    justify-content: center; background: rgba(6, 12, 26, 0.45); }
+  /* Menu card docks right so the parked plane shows on the left of the frame. */
+  #hud-menu { justify-content: flex-end; }
+  #hud-menu .card { margin-right: 36px; max-width: 560px; }
+  .card { background: rgba(8, 18, 34, 0.88); border: 1px solid rgba(255,210,74,0.6);
+    border-radius: 16px; padding: 28px 34px; max-width: 640px; width: calc(100% - 40px);
+    text-align: center; box-shadow: 0 0 40px rgba(255,170,60,0.3); }
+  .card h1 { font-size: 44px; letter-spacing: 3px; color: #ffd24a;
+    text-shadow: 0 0 18px rgba(255,180,60,0.8); }
+  .card h2 { font-size: 30px; color: #ffd24a; margin-bottom: 8px; }
+  .subtitle { color: #cfe3ff; margin: 6px 0 18px; font-size: 15px; }
+  .mission-btn { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 12px 14px;
+    background: rgba(255,210,74,0.10); border: 1px solid rgba(255,210,74,0.5); border-radius: 10px;
+    color: #fff; cursor: pointer; font-family: inherit; }
+  .mission-btn:hover { background: rgba(255,210,74,0.28); }
+  .mission-key { display: inline-block; background: #ffd24a; color: #16233c; font-weight: 800;
+    border-radius: 6px; padding: 2px 9px; margin-right: 10px; }
+  .mission-name { font-size: 18px; font-weight: 800; }
+  .mission-brief { display: block; font-size: 13px; color: #cfe3ff; margin-top: 4px; line-height: 1.4; }
+  .controls { font-size: 12.5px; color: #9db8d8; margin-top: 16px; line-height: 1.7; }
+  .controls b { color: #ffd24a; }
+  .btn { display: inline-block; margin: 10px 6px 0; padding: 11px 26px; font-size: 16px; font-weight: 800;
+    background: #ffd24a; color: #16233c; border: none; border-radius: 10px; cursor: pointer;
+    font-family: inherit; }
+  .btn:hover { background: #ffe08a; }
+  .btn.ghost { background: transparent; color: #ffd24a; border: 1px solid #ffd24a; }
+  .db-row { display: flex; justify-content: space-between; font-size: 15px; padding: 5px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.12); color: #dfeaff; }
+  #debrief-score { font-size: 52px; font-weight: 900; color: #ffd24a; line-height: 1;
+    text-shadow: 0 0 18px rgba(255,180,60,0.8); }
+  #debrief-cause { color: #ffb3ab; margin: 4px 0 12px; font-size: 15px; }
+  #briefing-text { color: #dfeaff; font-size: 15px; line-height: 1.5; margin: 8px 0; }
+  #briefing-par { color: #ffd24a; font-size: 13px; letter-spacing: 1px; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud-flight" class="hidden">
+  <div id="hud-tl" class="panel">
+    <div class="label">AIRSPEED</div>
+    <div><span class="big" id="hud-speed">0</span> <span class="unit">kt</span></div>
+    <div class="label" style="margin-top:6px">THROTTLE</div>
+    <div class="bar"><div id="hud-throttle"></div></div>
+  </div>
+  <div id="hud-tr" class="panel">
+    <div class="label">ALTITUDE</div>
+    <div><span class="big" id="hud-alt">0</span> <span class="unit">ft</span></div>
+    <div class="unit" id="hud-vs">+0 fpm</div>
+  </div>
+  <div id="hud-compass" class="panel">
+    <div id="hud-heading">090°</div>
+    <div id="hud-objective"></div>
+  </div>
+  <div id="hud-horizon-wrap">
+    <canvas id="hud-horizon" width="150" height="110"></canvas>
+    <div class="label">ATTITUDE</div>
+  </div>
+  <div id="hud-crosshair"></div>
+  <div id="hud-warning"></div>
+  <div id="hud-message"></div>
+  <div id="hud-bottom">
+    <div class="panel"><div class="label">FUEL <span id="hud-fuel-text">100%</span></div><div class="bar"><div id="hud-fuel"></div></div></div>
+    <div class="panel"><div class="label">DAMAGE <span id="hud-damage-text">0%</span></div><div class="bar"><div id="hud-damage"></div></div></div>
+    <div class="panel"><div class="label">RINGS</div><div class="big" id="hud-rings" style="font-size:22px">0/8</div></div>
+    <div class="panel"><div class="label">TIME</div><div class="big" id="hud-time" style="font-size:22px">2:30</div></div>
+    <div class="panel"><div class="label">SCORE</div><div class="big" id="hud-score" style="font-size:22px">0</div></div>
+  </div>
+</div>
+
+<div id="hud-menu" class="screen">
+  <div class="card">
+    <h1>SKY RING RUN</h1>
+    <p class="subtitle">Bush-plane ring course over a golden-hour archipelago. Fly the rings, mind the fuel, land soft.</p>
+    <div id="menu-missions"></div>
+    <p class="controls"><b>W/S</b> throttle &nbsp; <b>↑/↓</b> pitch &nbsp; <b>←/→</b> roll &nbsp; <b>A/D</b> rudder &nbsp; <b>Space</b> airbrake<br>
+    <b>C</b> camera &nbsp; <b>R</b> restart &nbsp; <b>P</b> pause &nbsp; <b>M</b> mute &nbsp; <b>Enter</b> start &nbsp; <b>Esc</b> menu<br>
+    Mouse looks around. Keyboard flies the plane.</p>
+  </div>
+</div>
+
+<div id="hud-briefing" class="screen hidden">
+  <div class="card">
+    <h2 id="briefing-title">Ring Run</h2>
+    <p id="briefing-text"></p>
+    <p id="briefing-par"></p>
+    <button class="btn" id="briefing-start">TAKE OFF ▸</button>
+    <p class="controls">Press <b>Enter</b> to fly &nbsp;·&nbsp; <b>Esc</b> back to menu</p>
+  </div>
+</div>
+
+<div id="hud-debrief" class="screen hidden">
+  <div class="card">
+    <h2 id="debrief-title">MISSION COMPLETE</h2>
+    <p id="debrief-cause"></p>
+    <div id="debrief-score">0</div>
+    <div class="label" style="margin: 2px 0 10px">FINAL SCORE</div>
+    <div id="debrief-rows"></div>
+    <button class="btn" id="debrief-again">FLY AGAIN ↻</button>
+    <button class="btn ghost" id="debrief-menu">MENU</button>
+    <p class="controls">Press <b>Enter</b> to fly again &nbsp;·&nbsp; <b>Esc</b> menu</p>
+  </div>
+</div>
+
+<div id="hud-pause" class="screen hidden">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <p class="subtitle">The Kestrel is holding pattern.</p>
+    <button class="btn" id="pause-resume">RESUME ▸</button>
+    <button class="btn ghost" id="pause-menu">MENU</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
