@@ -87,18 +87,22 @@ export function buildTerrain(scene, seed) {
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: {
-      top: { value: new THREE.Color(0x2e4d7a) },
+      top: { value: new THREE.Color(0x163a6e) },
       mid: { value: new THREE.Color(0xf2a65a) },
       low: { value: new THREE.Color(0xffd9a0) },
+      haze: { value: new THREE.Color(0xffc98a) },
       sunDir: { value: new THREE.Vector3(-0.72, 0.32, -0.42).normalize() },
     },
     vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vP; uniform vec3 top, mid, low, sunDir;
+    fragmentShader: `varying vec3 vP; uniform vec3 top, mid, low, haze, sunDir;
       void main(){ vec3 d = normalize(vP); float h = clamp(d.y, -0.05, 1.0);
       vec3 c = mix(low, mid, smoothstep(0.0, 0.22, h));
-      c = mix(c, top, smoothstep(0.18, 0.65, h));
+      c = mix(c, top, smoothstep(0.10, 0.42, h));
+      float band = exp(-abs(h - 0.06) * 22.0);
+      c = mix(c, haze, band * 0.55);
       float s = max(dot(d, sunDir), 0.0);
       c += vec3(1.0, 0.75, 0.4) * pow(s, 90.0) * 1.4 + vec3(1.0, 0.55, 0.25) * pow(s, 6.0) * 0.35;
+      c += vec3(1.0, 0.8, 0.55) * pow(s, 18.0) * 0.45 + vec3(1.0, 0.6, 0.3) * pow(s, 2.0) * 0.10;
       gl_FragColor = vec4(c, 1.0); }`,
   });
   scene.add(new THREE.Mesh(skyGeo, skyMat));
@@ -130,17 +134,26 @@ export function buildTerrain(scene, seed) {
     darkGrass = new THREE.Color(0x4d7d43), rock = new THREE.Color(0x8a7a6a),
     peak = new THREE.Color(0xb9b2a4);
   const c = new THREE.Color();
+  const patchA = new THREE.Color(0x7fb35e), patchB = new THREE.Color(0x5d8a3e);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const h = heightAt(x, z);
     pos.setY(i, h);
+    // Slope from finite differences: steep ground reads as rock/cliff.
+    const slope = Math.hypot(heightAt(x + 14, z) - h, heightAt(x, z + 14) - h) / 14;
+    const rockiness = smooth(Math.min(1, Math.max(0, (slope - 0.35) / 0.45)));
     if (h < 3.5) c.copy(sand);
     else if (h < 14) c.copy(sand).lerp(grass, smooth((h - 3.5) / 10));
     else if (h < 30) c.copy(grass).lerp(darkGrass, smooth((h - 14) / 16));
     else if (h < 44) c.copy(darkGrass).lerp(rock, smooth((h - 30) / 14));
     else c.copy(rock).lerp(peak, smooth((h - 44) / 12));
-    // Slight noise variation so the ground is not flat-shaded.
-    const v = 0.92 + 0.08 * noise2(x * 0.05, z * 0.05, seed + 3);
+    // Patchy grass: two blotch scales blended into the grass band only.
+    const patch = noise2(x * 0.012 + 40, z * 0.012, seed + 11) * 0.5 + 0.5;
+    if (h >= 3.5 && h < 30) c.lerp(patch > 0.55 ? patchA : patchB, Math.abs(patch - 0.5) * 0.7);
+    if (rockiness > 0) c.lerp(rock, rockiness * 0.85);
+    // Stronger patchy brightness noise so grass/sand are not flat bands.
+    const v = 0.86 + 0.14 * noise2(x * 0.05, z * 0.05, seed + 3)
+      + 0.07 * noise2(x * 0.15 + 9, z * 0.15, seed + 5);
     colors[i * 3] = c.r * v; colors[i * 3 + 1] = c.g * v; colors[i * 3 + 2] = c.b * v;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -213,7 +226,7 @@ export function buildTerrain(scene, seed) {
   // Palm trees: instanced trunks + instanced frond cones, seeded placement on land.
   const palmSpots = [];
   let guard = 0;
-  while (palmSpots.length < 240 && guard++ < 4000) {
+  while (palmSpots.length < 420 && guard++ < 8000) {
     const x = (rng() * 2 - 1) * 950, z = (rng() * 2 - 1) * 950;
     const h = heightAt(x, z);
     if (h < 4 || h > 26) continue;
@@ -238,18 +251,85 @@ export function buildTerrain(scene, seed) {
   });
   scene.add(trunks); scene.add(fronds);
 
+  // Bushes + boulders: instanced low scrub and grey rock scattered on land.
+  const bushSpots = [];
+  let bguard = 0;
+  while (bushSpots.length < 170 && bguard++ < 5000) {
+    const x = (rng() * 2 - 1) * 950, z = (rng() * 2 - 1) * 950;
+    const h = heightAt(x, z);
+    if (h < 4 || h > 34) continue;
+    if (x > RUNWAY.x0 - 20 && x < RUNWAY.x1 + 20 && z > RUNWAY.z0 - 20 && z < RUNWAY.z1 + 20) continue;
+    bushSpots.push({ x, z, h, s: 0.7 + rng() * 1.1, r: rng() * Math.PI * 2 });
+  }
+  const bushGeo = new THREE.SphereGeometry(1.6, 7, 5);
+  bushGeo.scale(1, 0.65, 1); bushGeo.translate(0, 0.8, 0);
+  const bushes = new THREE.InstancedMesh(bushGeo, new THREE.MeshLambertMaterial({ color: 0x4a7d38 }), bushSpots.length);
+  const rockSpots = [];
+  let rguard = 0;
+  while (rockSpots.length < 90 && rguard++ < 5000) {
+    const x = (rng() * 2 - 1) * 950, z = (rng() * 2 - 1) * 950;
+    const h = heightAt(x, z);
+    if (h < 3 || h > 48) continue;
+    if (x > RUNWAY.x0 - 20 && x < RUNWAY.x1 + 20 && z > RUNWAY.z0 - 20 && z < RUNWAY.z1 + 20) continue;
+    rockSpots.push({ x, z, h, s: 0.8 + rng() * 1.6, r: rng() * Math.PI * 2 });
+  }
+  const boulderGeo = new THREE.IcosahedronGeometry(1.5, 0);
+  const boulders = new THREE.InstancedMesh(boulderGeo, new THREE.MeshLambertMaterial({ color: 0x8d8378 }), rockSpots.length);
+  [ [bushes, bushSpots], [boulders, rockSpots] ].forEach(([mesh, spots]) => {
+    spots.forEach((p, i) => {
+      eu.set(0, p.r, 0); q.setFromEuler(eu); sc.set(p.s, p.s, p.s); pv.set(p.x, p.h - 0.2, p.z);
+      m4.compose(pv, q, sc); mesh.setMatrixAt(i, m4);
+    });
+    scene.add(mesh);
+  });
+
+  // Landmarks near the runway: a striped lighthouse east of the strip and
+  // three thatched huts south of it, so the cover frame has recognisable depth.
+  const lighthouse = new THREE.Group();
+  const lhY = heightAt(212, 82);
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.0, 16, 10),
+    new THREE.MeshLambertMaterial({ color: 0xf5f2ea }));
+  tower.position.y = 8; lighthouse.add(tower);
+  const stripeMat = new THREE.MeshLambertMaterial({ color: 0xd23c2a });
+  for (const sy of [4.5, 10.5]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(2.45, 2.65, 2.2, 10), stripeMat);
+    band.position.y = sy; lighthouse.add(band);
+  }
+  const lampRoom = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 2.4, 10),
+    new THREE.MeshLambertMaterial({ color: 0x222226 }));
+  lampRoom.position.y = 17; lighthouse.add(lampRoom);
+  const lampGlow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+  lampGlow.position.y = 17; lighthouse.add(lampGlow);
+  const lhCap = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.2, 10), stripeMat);
+  lhCap.position.y = 19.4; lighthouse.add(lhCap);
+  lighthouse.position.set(212, lhY, 82);
+  scene.add(lighthouse);
+  const hutWall = new THREE.MeshLambertMaterial({ color: 0xc9a06a });
+  const hutRoof = new THREE.MeshLambertMaterial({ color: 0x8a5a30 });
+  for (const [hx, hz, hr] of [[-150, 158, 0.3], [-122, 166, -0.5], [186, 162, 0.9]]) {
+    const hut = new THREE.Group();
+    const hy = heightAt(hx, hz);
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(7, 3.4, 6), hutWall);
+    walls.position.y = 1.7; hut.add(walls);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 3.2, 4), hutRoof);
+    roof.position.y = 5.0; roof.rotation.y = Math.PI / 4; hut.add(roof);
+    hut.position.set(hx, hy, hz); hut.rotation.y = hr;
+    scene.add(hut);
+  }
+
   // Soft clouds: glowing sprite blobs drifting slowly.
   const cloudTex = makeGlowTexture();
   const clouds = [];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 44; i++) {
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: cloudTex, color: 0xffe8c8, transparent: true, opacity: 0.55, depthWrite: false,
+      map: cloudTex, color: i % 3 === 0 ? 0xffd9a8 : 0xffe8c8, transparent: true, opacity: 0.5 + rng() * 0.25, depthWrite: false,
     }));
-    const a = rng() * Math.PI * 2, r = 300 + rng() * 1400;
-    spr.position.set(Math.cos(a) * r, 180 + rng() * 160, Math.sin(a) * r);
-    const s = 140 + rng() * 220;
-    spr.scale.set(s, s * 0.42, 1);
-    spr.userData.drift = 1.5 + rng() * 2;
+    const a = rng() * Math.PI * 2, r = 250 + rng() * 1500;
+    spr.position.set(Math.cos(a) * r, 150 + rng() * 260, Math.sin(a) * r);
+    const s = 110 + rng() * 320;
+    spr.scale.set(s, s * (0.32 + rng() * 0.22), 1);
+    spr.userData.drift = 1.5 + rng() * 2.5;
     scene.add(spr); clouds.push(spr);
   }
 

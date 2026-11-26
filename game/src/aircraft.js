@@ -66,20 +66,34 @@ export function buildAircraft(scene) {
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.5, 10), dark);
   hub.rotation.z = Math.PI / 2;
   prop.add(hub);
-  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x222226, transparent: true, opacity: 0.9 });
+  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x9a938a, transparent: true, opacity: 0.9 });
   const bladeV = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.4, 0.42), bladeMat);
   prop.add(bladeV);
   const bladeH = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.42, 3.4), bladeMat);
   prop.add(bladeH);
+  // Bright tip stripes so the blades never read as dark wedges.
+  const tipMat = new THREE.MeshBasicMaterial({ color: 0xffc94d });
+  for (const ty of [-1.55, 1.55]) {
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.44), tipMat);
+    tip.position.y = ty; prop.add(tip);
+  }
+  for (const tz of [-1.55, 1.55]) {
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.44, 0.5), tipMat);
+    tip.position.z = tz; prop.add(tip);
+  }
   prop.position.set(4.55, 0, 0);
   model.add(prop);
   // Spinner disc (faint, reads as a spinning blur at speed).
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(1.75, 24),
-    new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.14, side: THREE.DoubleSide }));
+  const discMat = new THREE.MeshBasicMaterial({
+    map: makeDiscTexture(), color: 0xd8d2c8, transparent: true, opacity: 0.22,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(1.75, 24), discMat);
   disc.position.set(4.5, 0, 0);
   disc.rotation.y = Math.PI / 2;
   model.add(disc);
+  prop.userData.bladeMat = bladeMat;
+  prop.userData.discMat = discMat;
 
   // Landing gear: three legs + wheels.
   const gear = new THREE.Group();
@@ -120,7 +134,29 @@ export function updateAircraft(aircraft, state, dt) {
   g.rotation.x = -state.pitch;
   g.rotation.z = state.bank;
   // Prop spins faster with throttle (and keeps windmilling in flight).
-  const spin = (4 + state.throttle * 46 + state.speed * 0.35) * dt;
+  const spinRate = 4 + state.throttle * 46 + state.speed * 0.35;
+  const spin = spinRate * dt;
   aircraft.propeller.rotation.x += spin;
+  // Fast spin blurs the blades away and strengthens the translucent disc.
+  const blur = Math.min(1, spinRate / 50);
+  if (aircraft.propeller.userData.bladeMat) {
+    aircraft.propeller.userData.bladeMat.opacity = 0.85 - 0.6 * blur;
+  }
+  if (aircraft.propeller.userData.discMat) {
+    aircraft.propeller.userData.discMat.opacity = 0.08 + 0.14 * blur;
+  }
   aircraft.setGear(state.gearDown);
+}
+
+function makeDiscTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+  g.addColorStop(0, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.28)');
+  g.addColorStop(0.9, 'rgba(255,255,255,0.10)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(cv);
 }
