@@ -6,7 +6,7 @@ export function createFlightState() {
   return {
     // Position: x east, y up, z south. Start parked at the west end of the runway.
     x: -150, y: CONFIG.runwayHeight + 1.2, z: 120,
-    heading: Math.PI / 2,   // facing +x (east, down the runway)
+    heading: 0,   // facing +x (east, down the runway)
     pitch: 0,
     bank: 0,
     speed: 0,               // m/s along the nose
@@ -98,7 +98,9 @@ export function checkLanding(state, terrain) {
   if (state.y <= ground + 1.1) {
     state.y = ground + 1.1;
     const onStrip = terrain.isRunway(state.x, state.z) || terrain.isBeach(state.x, state.z);
-    const aligned = Math.abs(Math.sin(state.heading - Math.PI / 2)) < 0.45 || onStrip;
+    // Aligned means flying along the strip's axis (the runway runs along X,
+    // so headings near east / west, i.e. sin(heading) near 0).
+    const aligned = Math.abs(Math.sin(state.heading)) < 0.45 || onStrip;
     const vs = Math.abs(state.verticalSpeed);
     if (onStrip && aligned && vs <= CONFIG.softLandingVs && state.speed < 55) {
       state.onGround = true; state.airborne = false; state.speed *= 0.4;

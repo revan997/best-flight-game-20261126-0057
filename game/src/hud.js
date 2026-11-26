@@ -15,8 +15,10 @@ export function createHud() {
     c.translate(W / 2, H / 2);
     c.rotate(bank);
     const dy = pitch * 90;
+    // Sky first, over the whole clipped circle, then ground from the horizon
+    // line down: at steep pitch the old sky rect left a transparent gap.
     c.fillStyle = '#3d7ac8';
-    c.fillRect(-60, -60 + dy, 120, 60 - dy + 60);
+    c.fillRect(-60, -60, 120, 120);
     c.fillStyle = '#8a6a3a';
     c.fillRect(-60, dy, 120, 120);
     c.fillStyle = '#ffffff';

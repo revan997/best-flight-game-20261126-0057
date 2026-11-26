@@ -107,18 +107,26 @@ function stageShot() {
     Object.assign(flight, { x: 60, y: 45, z: 350, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 55, throttle: 0.7, onGround: false, airborne: true });
     mission.ringsDone = 7;
     mission.timeLeft = 62; mission.score = 700;
+    // Keep the HUD clock consistent with the staged progress: 7 rings banked
+    // +10 s each, so elapsed = par + bonuses - timeLeft.
+    mission.timeBonusTotal = 70; mission.elapsed = 150 + 70 - 62;
     course.rings.forEach((r, i) => { if (i < 7) r.passed = true; });
     setRingStates(course.rings, 7);
   } else if (SHOT === 'rings') {
-    Object.assign(flight, { x: 60, y: 60, z: 330, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 60, throttle: 0.8, onGround: false, airborne: true });
+    // Close pass: 65 m out from ring 8, dead on its centre line.
+    Object.assign(flight, { x: 60, y: 60, z: 265, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 60, throttle: 0.8, onGround: false, airborne: true });
     mission.ringsDone = 7;
     mission.timeLeft = 58; mission.score = 700;
+    mission.timeBonusTotal = 70; mission.elapsed = 150 + 70 - 58;
     course.rings.forEach((r, i) => { if (i < 7) r.passed = true; });
     setRingStates(course.rings, 7);
   } else if (SHOT === 'landing') {
-    Object.assign(flight, { x: 60, y: 26, z: 330, heading: -Math.PI / 2, pitch: -0.06, bank: 0, speed: 42, throttle: 0.35, onGround: false, airborne: true, gearDown: true });
+    // Final approach along the runway (heading east, down the strip): gear
+    // down, 10 m above the deck, 250 m of runway ahead.
+    Object.assign(flight, { x: -80, y: 20, z: 120, heading: 0, pitch: -0.05, bank: 0, speed: 42, throttle: 0.25, onGround: false, airborne: true, gearDown: true });
     mission.ringsDone = 8;
-    mission.timeLeft = 41; mission.score = 1050;
+    mission.timeLeft = 41; mission.score = 800;
+    mission.timeBonusTotal = 80; mission.elapsed = 150 + 80 - 41;
     course.rings.forEach((r) => { r.passed = true; });
     setRingStates(course.rings, 8);
   }
@@ -259,11 +267,14 @@ function updateCamera(dt, t) {
     return;
   }
   if (cameraMode === 'cockpit') {
-    const cx = flight.x + fwd.x * 2.2, cz = flight.z + fwd.z * 2.2;
-    camera.position.set(cx, flight.y + 1.1, cz);
+    // Sit just behind the canopy, not on the nose: the prop disc is 4 m ahead,
+    // so the blades read as a spinner blur instead of filling the frame, and
+    // the nose + HUD strip stay in view below.
+    const cx = flight.x + fwd.x * 0.6, cz = flight.z + fwd.z * 0.6;
+    camera.position.set(cx, flight.y + 1.5, cz);
     const lx = flight.x + fwd.x * 60 + look.x * 30;
     const lz = flight.z + fwd.z * 60;
-    camera.lookAt(lx, flight.y + flight.pitch * 30 + look.y * 20, lz);
+    camera.lookAt(lx, flight.y + flight.pitch * 30 - 1.5 + look.y * 20, lz);
     camera.rotation.z += flight.bank * 0.35;
     return;
   }
