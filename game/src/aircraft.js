@@ -4,6 +4,19 @@
 // so the outer group can use YXZ yaw/pitch/roll like a real aircraft.
 import * as THREE from 'three';
 
+// Wingtip contrails (W3): one sprite-puff pool per wingtip. A puff is born
+// at the tip, stays behind in world space, grows and fades over TRAIL_LIFE.
+// Pool size caps live sprites at TRAIL_POOL per tip; spawn interval is
+// chosen so at most TRAIL_LIFE / TRAIL_INTERVAL = 24 puffs are alive.
+const TRAIL_POOL = 24;
+const TRAIL_LIFE = 1.5; // seconds until a puff fully fades
+const TRAIL_INTERVAL = 0.0625; // spawn one puff per wingtip every 1/16 s
+const TRAIL_MIN_SPEED = 30; // m/s — only trail when airborne and fast
+const TRAIL_MAX_OPACITY = 0.5;
+const TRAIL_START_SCALE = 1.0;
+const TRAIL_END_SCALE = 3.2;
+const _tipPos = new THREE.Vector3();
+
 export function buildAircraft(scene) {
   const group = new THREE.Group();
   const model = new THREE.Group();
@@ -121,8 +134,39 @@ export function buildAircraft(scene) {
   navT.position.set(-4.3, 0.4, 0);
   model.add(navT);
 
+  // Wingtip contrail anchors: invisible markers at the model-local tip
+  // positions (0.4, 0.15, ±6.0). Their world position — via the group's
+  // YXZ yaw/pitch/roll matrix — is where each puff is born.
+  const tipL = new THREE.Object3D();
+  tipL.position.set(0.4, 0.15, -6.0);
+  model.add(tipL);
+  const tipR = new THREE.Object3D();
+  tipR.position.set(0.4, 0.15, 6.0);
+  model.add(tipR);
+
+  // Contrail puff pools: sprites share one radial-gradient texture (the
+  // makeDiscTexture() pattern); each puff has its own material so its
+  // opacity can fade independently. Puffs are added to the scene (world
+  // space) so they stay behind the plane instead of following it.
+  const puffTexture = makeDiscTexture();
+  const trails = [];
+  for (const tip of [tipL, tipR]) {
+    const pool = [];
+    for (let i = 0; i < TRAIL_POOL; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: puffTexture, color: 0xffffff, transparent: true,
+        opacity: 0, depthWrite: false,
+      });
+      const sprite = new THREE.Sprite(mat);
+      sprite.visible = false;
+      scene.add(sprite);
+      pool.push({ sprite, age: 0, active: false });
+    }
+    trails.push({ tip, pool, next: 0, acc: 0 });
+  }
+
   scene.add(group);
-  return { group, propeller: prop, gear, setGear(down) { gear.visible = down; } };
+  return { group, propeller: prop, gear, setGear(down) { gear.visible = down; }, trails };
 }
 
 export function updateAircraft(aircraft, state, dt) {
@@ -146,6 +190,47 @@ export function updateAircraft(aircraft, state, dt) {
     aircraft.propeller.userData.discMat.opacity = 0.08 + 0.14 * blur;
   }
   aircraft.setGear(state.gearDown);
+
+  // Wingtip contrails: while airborne and faster than TRAIL_MIN_SPEED,
+  // spawn one puff per wingtip every TRAIL_INTERVAL at the tip's current
+  // world position. Puffs age in world space, growing and fading over
+  // TRAIL_LIFE, then recycle. Visual only — no flight/scoring effect.
+  if (aircraft.trails) {
+    for (const trail of aircraft.trails) {
+      if (state.airborne && state.speed > TRAIL_MIN_SPEED) {
+        trail.acc += dt;
+        let guard = 0;
+        while (trail.acc >= TRAIL_INTERVAL && guard++ < TRAIL_POOL) {
+          trail.acc -= TRAIL_INTERVAL;
+          const puff = trail.pool[trail.next];
+          trail.next = (trail.next + 1) % TRAIL_POOL;
+          trail.tip.getWorldPosition(_tipPos);
+          puff.sprite.position.copy(_tipPos);
+          puff.age = 0;
+          puff.active = true;
+          puff.sprite.visible = true;
+          puff.sprite.scale.set(TRAIL_START_SCALE, TRAIL_START_SCALE, TRAIL_START_SCALE);
+          puff.sprite.material.opacity = TRAIL_MAX_OPACITY;
+        }
+      } else {
+        trail.acc = 0;
+      }
+      for (const puff of trail.pool) {
+        if (!puff.active) continue;
+        puff.age += dt;
+        const t = puff.age / TRAIL_LIFE;
+        if (t >= 1) {
+          puff.active = false;
+          puff.sprite.visible = false;
+          puff.sprite.material.opacity = 0;
+        } else {
+          puff.sprite.material.opacity = TRAIL_MAX_OPACITY * (1 - t);
+          const s = TRAIL_START_SCALE + (TRAIL_END_SCALE - TRAIL_START_SCALE) * t;
+          puff.sprite.scale.set(s, s, s);
+        }
+      }
+    }
+  }
 }
 
 function makeDiscTexture() {
