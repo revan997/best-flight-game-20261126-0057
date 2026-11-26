@@ -318,6 +318,78 @@ export function buildTerrain(scene, seed) {
     scene.add(hut);
   }
 
+  // MOUNT EMBER — the archipelago's volcano, on the far north-east island.
+  // Pure scenery: a separate decorative mesh, NOT part of heightAt(), so it
+  // cannot change the flight model, the autopilot, or any landing.
+  const EMBER_X = 640, EMBER_Z = -620;
+  const emberBase = heightAt(EMBER_X, EMBER_Z) - 2;
+  const EMBER_H = 85, EMBER_R = 110;
+  const emberRock = new THREE.MeshLambertMaterial({ color: 0x4a3a32 });
+  const emberCone = new THREE.Mesh(new THREE.ConeGeometry(EMBER_R, EMBER_H, 24), emberRock);
+  emberCone.position.set(EMBER_X, emberBase + EMBER_H / 2, EMBER_Z);
+  scene.add(emberCone);
+  // Darker lava streaks running down the cone flanks.
+  const emberLavaMat = new THREE.MeshLambertMaterial({ color: 0x6e2a12 });
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.4;
+    const streak = new THREE.Mesh(new THREE.ConeGeometry(7, EMBER_H * 0.72, 6), emberLavaMat);
+    const sr = EMBER_R * 0.52;
+    streak.position.set(EMBER_X + Math.cos(a) * sr, emberBase + EMBER_H * 0.36, EMBER_Z + Math.sin(a) * sr);
+    streak.rotation.z = Math.cos(a) * 0.35;
+    streak.rotation.x = -Math.sin(a) * 0.35;
+    scene.add(streak);
+  }
+  // Glowing crater: emissive orange disc + a large soft warm glow sprite.
+  const craterY = emberBase + EMBER_H - 1;
+  const crater = new THREE.Mesh(new THREE.CircleGeometry(30, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff6a1a, fog: false }));
+  crater.rotation.x = -Math.PI / 2;
+  crater.position.set(EMBER_X, craterY, EMBER_Z);
+  scene.add(crater);
+  const craterInner = new THREE.Mesh(new THREE.CircleGeometry(15, 20),
+    new THREE.MeshBasicMaterial({ color: 0xffd23c, fog: false }));
+  craterInner.rotation.x = -Math.PI / 2;
+  craterInner.position.set(EMBER_X, craterY + 0.6, EMBER_Z);
+  scene.add(craterInner);
+  const emberGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeGlowTexture(), color: 0xff7a26, transparent: true, opacity: 0.85, depthWrite: false, fog: false,
+  }));
+  emberGlow.position.set(EMBER_X, craterY + 6, EMBER_Z);
+  emberGlow.scale.set(300, 210, 1);
+  scene.add(emberGlow);
+  // Smoke column: dark grey sprite blobs rising from the crater and
+  // drifting with the wind, looping back to the crater when they get high.
+  const smokeTex = makeGlowTexture();
+  const smoke = [];
+  for (let i = 0; i < 7; i++) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: smokeTex, color: 0x3a3632, transparent: true, opacity: 0.5, depthWrite: false, fog: false,
+    }));
+    const f = i / 7;
+    spr.position.set(EMBER_X + f * 55, craterY + 8 + f * 170, EMBER_Z - f * 18);
+    const s = 46 + f * 62;
+    spr.scale.set(s, s * 0.8, 1);
+    spr.userData.rise = 7 + rng() * 5;
+    spr.userData.top = craterY + 185;
+    scene.add(spr); smoke.push(spr);
+  }
+  // Ember particles: ~40 tiny glowing dots rising out of the crater.
+  const EMBER_N = 40;
+  const emberPos = new Float32Array(EMBER_N * 3);
+  const emberSeed = [];
+  for (let i = 0; i < EMBER_N; i++) {
+    emberSeed.push({ r: rng() * 22, a: rng() * Math.PI * 2, y: rng() * 55, v: 9 + rng() * 14 });
+    emberPos[i * 3] = EMBER_X + Math.cos(emberSeed[i].a) * emberSeed[i].r;
+    emberPos[i * 3 + 1] = craterY + emberSeed[i].y;
+    emberPos[i * 3 + 2] = EMBER_Z + Math.sin(emberSeed[i].a) * emberSeed[i].r;
+  }
+  const emberGeo = new THREE.BufferGeometry();
+  emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
+  const emberPts = new THREE.Points(emberGeo, new THREE.PointsMaterial({
+    color: 0xffa02e, size: 3.2, transparent: true, opacity: 0.95, depthWrite: false, fog: false,
+  }));
+  scene.add(emberPts);
+
   // Soft clouds: glowing sprite blobs drifting slowly.
   const cloudTex = makeGlowTexture();
   const clouds = [];
@@ -350,6 +422,25 @@ export function buildTerrain(scene, seed) {
         cl.position.x += cl.userData.drift * dt;
         if (cl.position.x > 1800) cl.position.x = -1800;
       }
+      // Mount Ember: smoke rises and drifts east with the wind, then loops;
+      // embers rise out of the crater and fade back down to it.
+      for (const sp of smoke) {
+        sp.position.y += sp.userData.rise * dt;
+        sp.position.x += 3.2 * dt;
+        if (sp.position.y > sp.userData.top) {
+          sp.position.y = craterY + 8;
+          sp.position.x = EMBER_X;
+        }
+      }
+      emberGlow.material.opacity = 0.75 + Math.sin(t * 2.2) * 0.12;
+      const ep = emberGeo.attributes.position;
+      for (let i = 0; i < EMBER_N; i++) {
+        const s = emberSeed[i];
+        s.y += s.v * dt;
+        if (s.y > 58) { s.y = 0; s.r = rng() * 22; s.a = rng() * Math.PI * 2; }
+        ep.setXYZ(i, EMBER_X + Math.cos(s.a) * s.r, craterY + s.y, EMBER_Z + Math.sin(s.a) * s.r);
+      }
+      ep.needsUpdate = true;
       cone.rotation.z = Math.PI / 2 - 0.25 + Math.sin(t * 1.7) * 0.08;
     },
   };

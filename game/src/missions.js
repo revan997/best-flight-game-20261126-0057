@@ -27,7 +27,7 @@ export function objectiveText(m) {
     return 'Beach landing done — fly back, land on the MAIN RUNWAY';
   }
   if (m.ringsDone < m.ringsTotal) {
-    return `Ring ${m.ringsDone + 1} of ${m.ringsTotal} — then land on the runway`;
+    return `Ring ${m.ringsDone + 1} of ${m.ringsTotal} — circle Mount Ember, then land on the runway`;
   }
   return 'Course complete — land on the MAIN RUNWAY';
 }

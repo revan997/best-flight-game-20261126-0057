@@ -45,7 +45,7 @@ export const MISSIONS = [
     id: 'ring-run',
     name: 'Ring Run',
     tag: '1',
-    briefing: 'Fly the 8-ring course over the archipelago, then land on the main runway. The gold ring refuels you. Par time 150 s.',
+    briefing: 'Fly the 8-ring course over the archipelago, circle Mount Ember\'s smoking cone, then land on the main runway. The gold ring refuels you. Par time 150 s.',
     rings: 8,
     parTime: 150,
     refuel: true,
