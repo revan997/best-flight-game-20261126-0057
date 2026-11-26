@@ -13,6 +13,9 @@ export const CONFIG = {
   maxBank: 1.15,         // rad (~66 deg)
   gravity: 9.81,
   brakeDrag: 0.9,        // extra drag multiplier with airbrake
+  groundFriction: 8,    // m/s^2 rolling resistance on the ground: a landed
+  // plane stops in ~4 s from 40 m/s with throttle at 0; full thrust (22)
+  // still beats it, so a go-around from a stop works as before.
   // Fuel / damage
   fuelCapacity: 100,
   fuelBurn: 1.0,         // %/s at full throttle (idle ~0.15)

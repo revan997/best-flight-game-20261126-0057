@@ -15,6 +15,18 @@ import { createInput } from './input.js';
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
 const SEED = parseInt(params.get('seed') || String(CONFIG.seed), 10) || CONFIG.seed;
+// Deterministic test-only autopilot: steers through the real flight/mission
+// code paths (takeoff, ring centres, runway threshold, flare, landing).
+// OFF unless ?autopilot=1; never affects normal play.
+const AUTOPILOT = params.get('autopilot') === '1';
+let autoStarted = false;
+// Autopilot line-following direction per ring: +1 runs the inbound leg
+// toward the gate; -1 flies back along the leg after an overshoot.
+let autoRingIdx = -1;
+let autoDir = 1;
+// Autopilot final-approach direction: -1 flies west to the staging point,
+// +1 flies the glide east onto the strip.
+let autoFinalDir = -1;
 
 const hud = createHud();
 const audio = createAudio();
@@ -102,6 +114,23 @@ function stageShot() {
   mission = startMission('ring-run');
   course = buildRingCourse(scene, mission.def);
   flight = createFlightState();
+  if (SHOT === 'debrief') {
+    // Completed-mission debrief through the real endFlight path: all 8 rings
+    // flown, soft touchdown, plausible finished score (recomputed by
+    // scoreMission inside endFlight). Plane stays parked on the runway.
+    course.rings.forEach((r) => { r.passed = true; });
+    setRingStates(course.rings, 8);
+    mission.ringsDone = 8;
+    mission.timeLeft = 41;
+    mission.timeBonusTotal = 80;
+    mission.elapsed = 150 + 80 - 41;
+    flight.fuel = 62;
+    flight.damage = 0;
+    mission._objective = objectiveText(mission);
+    endFlight('MISSION COMPLETE', 'Soft touchdown on the runway. The Kestrel is home.', true);
+    prevPos = { x: flight.x, y: flight.y, z: flight.z };
+    return;
+  }
   if (SHOT === 'cover') {
     // Final approach to ring 8: ring ahead, runway beyond it, island in frame.
     Object.assign(flight, { x: 60, y: 45, z: 350, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 55, throttle: 0.7, onGround: false, airborne: true });
@@ -134,6 +163,110 @@ function stageShot() {
   screen = 'flying';
   hud.setState('flying');
   prevPos = { x: flight.x, y: flight.y, z: flight.z };
+}
+
+// ---- Autopilot (?autopilot=1, test-only) ----
+// Returns a synthetic input snapshot each frame: bank toward the target
+// bearing, pitch toward the target altitude, throttle toward a target speed.
+// Target is the next ring's inbound leg (line-following), then the runway
+// centreline traffic pattern (west staging, east glide, touchdown).
+function autopilotInput() {
+  const snap = {
+    throttleUp: false, throttleDown: false,
+    pitchUp: false, pitchDown: false,
+    rollLeft: false, rollRight: false,
+    yawLeft: false, yawRight: false, brake: false,
+  };
+  let tx, ty, tz, targetSpeed;
+  const nextRing = course && course.rings.find((r) => !r.passed);
+  if (!flight.airborne) {
+    // Takeoff roll / ground roll: climb out straight down the runway.
+    tx = flight.x + 400; ty = 90; tz = 120; targetSpeed = 58;
+  } else if (nextRing) {
+    // Line-following: fly the inbound leg as a LINE through the ring
+    // centre (the ring faces along the leg from the previous ring). Pure
+    // pursuit of the centre ends in a stable orbit ~60 m off the gate —
+    // the turn radius at 52 m/s is ~140 m — so steer onto the line
+    // instead: head along the leg, corrected toward the line by the
+    // cross-track error. The line runs straight through the gate, so a
+    // converged approach cannot miss it. Overshoot past the ring plane
+    // flips the run direction until the plane is 300 m back up the leg.
+    const idx = nextRing.index;
+    const prevDef = idx === 0 ? { x: -150, y: 11, z: 120 } : course.rings[idx - 1].def;
+    let ux = nextRing.def.x - prevDef.x;
+    let uz = nextRing.def.z - prevDef.z;
+    const ul = Math.hypot(ux, uz) || 1;
+    ux /= ul; uz /= ul;
+    const dx = flight.x - nextRing.def.x;
+    const dz = flight.z - nextRing.def.z;
+    const s = dx * ux + dz * uz; // along-track: negative before the ring
+    if (nextRing.index !== autoRingIdx) { autoRingIdx = nextRing.index; autoDir = 1; }
+    const cx = dx - s * ux; // cross-track offset
+    const cz = dz - s * uz;
+    const cross = Math.hypot(cx, cz);
+    // Overshoot past the ring plane: fly back along the leg. Only turn
+    // around and run the leg again once well back up the leg AND back on
+    // the line — flipping on along-track alone re-triggers mid-turn and
+    // the plane orbits the gate forever.
+    if (s > 20) autoDir = -1;
+    else if (s < -350 && cross < 100) autoDir = 1;
+    const wx = autoDir * ux - cx / 40;
+    const wz = autoDir * uz - cz / 40;
+    tx = flight.x + wx * 100; // heading target only: aim 100 m along w
+    tz = flight.z + wz * 100;
+    ty = nextRing.def.y;
+    targetSpeed = autoDir === 1 ? (s > -250 ? 40 : 52) : 40;
+  } else {
+    // Final approach as a traffic pattern on the runway centreline
+    // (z=120): first fly WEST along the line to the staging point, then
+    // turn around and fly the glide EAST onto the strip. Line-following
+    // keeps the plane on the centreline; the glide stays above the 23 m
+    // hills west of the strip (probed heights) and touches down around
+    // mid-runway at ~1 m/s sink. Aiming straight at the threshold from
+    // ring 8 instead leaves the plane orbiting the point at 16 m forever
+    // (the old flare floored the pitch, so it could never descend).
+    const cz = flight.z - 120; // cross-track off the centreline
+    if (flight.x > 250) autoFinalDir = -1; // overshot east: go around
+    else if (flight.x < -400 && Math.abs(cz) < 60) autoFinalDir = 1;
+    const wx = autoFinalDir;
+    const wz = 0 - cz / 40;
+    tx = flight.x + wx * 100;
+    tz = flight.z + wz * 100;
+    if (autoFinalDir === -1) {
+      ty = 45; // positioning leg, well above the western hills
+    } else if (flight.x < -170) {
+      ty = 27 + (-170 - flight.x) * 0.05;
+    } else if (flight.x <= 0) {
+      ty = 11 + (-flight.x) * 0.094;
+    } else {
+      ty = 11;
+    }
+    targetSpeed = flight.onGround ? 0 : 42;
+  }
+  // Bearing: bank so the heading rate turns us toward the target. A
+  // negative bank raises the heading, so the desired bank is the negative
+  // of the heading error.
+  const wantHeading = Math.atan2(tz - flight.z, tx - flight.x);
+  let err = wantHeading - flight.heading;
+  err = Math.atan2(Math.sin(err), Math.cos(err));
+  // Slow down for big turns: at 52 m/s the turn radius (~140 m) is too
+  // wide to line up on a 400 m leg after a 140-degree course change; at
+  // 32 m/s the radius is ~50 m and the plane converges onto the leg
+  // instead of blowing past the gate 30 m off.
+  if (Math.abs(err) > 0.7) targetSpeed = Math.min(targetSpeed, 32);
+  const wantBank = Math.max(-1.1, Math.min(1.1, -err * 1.2));
+  if (flight.bank < wantBank - 0.04) snap.rollRight = true;
+  else if (flight.bank > wantBank + 0.04) snap.rollLeft = true;
+  // Altitude: pitch for a vertical speed proportional to the height error,
+  // flaring (nose up, slow) once low on final with the course complete.
+  let wantVy = Math.max(-9, Math.min(9, (ty - flight.y) * 0.9));
+  let wantPitch = Math.max(-0.35, Math.min(0.4, wantVy / Math.max(flight.speed, 15)));
+  if (flight.pitch < wantPitch - 0.03) snap.pitchUp = true;
+  else if (flight.pitch > wantPitch + 0.03) snap.pitchDown = true;
+  // Speed: bang-bang throttle around the target speed.
+  if (flight.speed < targetSpeed - 1) snap.throttleUp = true;
+  else if (flight.speed > targetSpeed + 1.5) snap.throttleDown = true;
+  return snap;
 }
 
 // ---- Per-frame update ----
@@ -169,7 +302,7 @@ function update(dt, t) {
 }
 
 function updateFlying(dt) {
-  const snap = input.snapshot();
+  const snap = AUTOPILOT ? autopilotInput() : input.snapshot();
   const events = updateFlight(flight, snap, dt);
   if (events.includes('takeoff')) hud.showMessage('AIRBORNE — GEAR UP, FLY THE COURSE');
   // Keep the plane glued to the strip while it is still on the ground.
@@ -301,7 +434,21 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   if (SHOT) stageShot();
-  update(dt, t);
+  if (AUTOPILOT && !SHOT && !autoStarted) {
+    autoStarted = true;
+    mission = startMission('ring-run');
+    course = buildRingCourse(scene, mission.def);
+    beginFlight();
+  }
+  // Test-only fast-forward: the software renderer runs at a few fps, so
+  // advance the simulation in fixed 1/60 s steps several times per rendered
+  // frame. Same code paths, same step size — only the wall-clock pace changes.
+  // Normal play is untouched: it still steps once per frame with the real dt.
+  if (AUTOPILOT) {
+    for (let i = 0; i < 30; i++) update(1 / 60, t);
+  } else {
+    update(dt, t);
+  }
   terrain.update(dt, t);
   updateAircraft(aircraft, flight, dt);
   updateCamera(dt, t);
@@ -312,6 +459,22 @@ function animate() {
   }
   renderer.render(scene, camera);
   if (!window.__skyRingReady) window.__skyRingReady = true;
+  if (AUTOPILOT && (screen === 'landed' || screen === 'crashed')) {
+    window.__skyRingAutopilotResult = screen;
+  }
+  if (AUTOPILOT) {
+    // Test-only probes for the screenshot harness.
+    window.__skyRingHeightAt = (x, z) => terrain.heightAt(x, z);
+    window.__skyRingDebug = () => ({
+      screen, x: Math.round(flight.x), y: Math.round(flight.y), z: Math.round(flight.z),
+      speed: Math.round(flight.speed), ringsDone: mission ? mission.ringsDone : 0,
+      timeLeft: mission ? Math.round(mission.timeLeft) : 0, fuel: Math.round(flight.fuel),
+      throttle: +flight.throttle.toFixed(2), bank: +flight.bank.toFixed(2),
+      pitch: +flight.pitch.toFixed(2), onGround: flight.onGround,
+      heading: +flight.heading.toFixed(2), airborne: flight.airborne,
+      damage: Math.round(flight.damage),
+    });
+  }
 }
 
 const clock = new THREE.Clock();

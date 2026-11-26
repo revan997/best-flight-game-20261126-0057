@@ -66,6 +66,14 @@ export function updateFlight(state, input, dt) {
   state.speed += (thrust - drag - Math.sin(state.pitch) * CONFIG.gravity * 0.9) * dt;
   if (state.speed < 0) state.speed = 0;
 
+  // Rolling resistance on the ground: without it a landed plane rolls forever
+  // on quadratic drag alone. A constant decel brings it to a dead stop in
+  // finite time (no creep); thrust still beats it, so a go-around from a
+  // stop (throttle up + pitch) works exactly as before.
+  if (state.onGround && state.speed > 0) {
+    state.speed = Math.max(0, state.speed - CONFIG.groundFriction * dt);
+  }
+
   // Takeoff: enough speed + a little pitch lifts off the ground.
   if (state.onGround && state.speed > CONFIG.stallSpeed * 0.9 && state.pitch > 0.04) {
     state.onGround = false; state.airborne = true; events.push('takeoff');
