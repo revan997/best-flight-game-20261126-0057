@@ -390,6 +390,114 @@ export function buildTerrain(scene, seed) {
   }));
   scene.add(emberPts);
 
+  // EAGLE'S NEST — watchtower on the NW ridge at (-300, -200).
+  // Pure scenery: a separate decorative mesh, NOT part of heightAt(), so it
+  // cannot change the flight model, the autopilot, or any landing.
+  // Pale stone shaft + red conical roof, distinct from the striped
+  // lighthouse at (212, 82) and from Mount Ember far to the NE. Base sits
+  // on the ridge (heightAt ~43.6 m); total height ~32 m, so the roof reads
+  // in the cover frame's left third (camera at ~(60, 45, 350) looking north).
+  const NEST_X = -300, NEST_Z = -200;
+  const nestBase = heightAt(NEST_X, NEST_Z);
+  const nest = new THREE.Group();
+  const nestStone = new THREE.MeshLambertMaterial({ color: 0xd8cdb8 });
+  const nestStoneDark = new THREE.MeshLambertMaterial({ color: 0xb5a98d });
+  const nestRed = new THREE.MeshLambertMaterial({ color: 0xb03a24 });
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.0, 2.5, 10), nestStoneDark);
+  plinth.position.y = 1.25; nest.add(plinth);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.6, 24, 10), nestStone);
+  shaft.position.y = 2.5 + 12; nest.add(shaft);
+  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.0, 2.2, 10), nestStoneDark);
+  gallery.position.y = 25.6; nest.add(gallery);
+  const nestRoof = new THREE.Mesh(new THREE.ConeGeometry(4.0, 5.0, 10), nestRed);
+  nestRoof.position.y = 26.7 + 2.5; nest.add(nestRoof);
+  const nestFinial = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6),
+    new THREE.MeshLambertMaterial({ color: 0x8a2a18 }));
+  nestFinial.position.y = 31.9; nest.add(nestFinial);
+  // Small warm glowing window on the south face (toward the cover camera).
+  const nestWindow = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.9),
+    new THREE.MeshBasicMaterial({ color: 0xffc36a, fog: false }));
+  nestWindow.position.set(0, 18, 3.15); nest.add(nestWindow);
+  const nestWindowGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeGlowTexture(), color: 0xffb45e, transparent: true, opacity: 0.65, depthWrite: false, fog: false,
+  }));
+  nestWindowGlow.position.set(0, 18, 3.6);
+  nestWindowGlow.scale.set(9, 9, 1); nest.add(nestWindowGlow);
+  // A second small window on the west face, for the rings/landing views.
+  const nestWindowW = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.6),
+    new THREE.MeshBasicMaterial({ color: 0xffc36a, fog: false }));
+  nestWindowW.position.set(-3.05, 12, 0);
+  nestWindowW.rotation.y = -Math.PI / 2; nest.add(nestWindowW);
+  nest.position.set(NEST_X, nestBase - 0.4, NEST_Z);
+  scene.add(nest);
+
+  // SUN GLITTER — ~20 small warm-white glow sprites on the water plane,
+  // scattered along a band toward the low sun (sun direction
+  // (-0.72, 0.32, -0.42); sun sprite at (-2900, 950, -1700)). The band runs
+  // NW from the island's NW shore into open water (all points verified
+  // heightAt < 0), clear of the runway/beach strips and of the ring course
+  // (nearest ring at (-650, 60, -300) is skirted by a 100 m exclusion).
+  const glitterTex = makeGlowTexture();
+  const glitter = [];
+  const GLITTER_DIR = { x: -0.864, z: -0.504 }; // sun direction, xz-normalised
+  const GLITTER_PERP = { x: 0.504, z: -0.864 };
+  const RING_XZ = [[260, -40], [480, -380], [120, -620], [-380, -560], [-650, -300], [-480, 180], [-120, 420], [60, 200]];
+  let gGuard = 0;
+  while (glitter.length < 20 && gGuard++ < 400) {
+    const along = 120 + rng() * 1060;
+    const side = (rng() * 2 - 1) * 55;
+    const gx = -420 + GLITTER_DIR.x * along + GLITTER_PERP.x * side;
+    const gz = -140 + GLITTER_DIR.z * along + GLITTER_PERP.z * side;
+    if (heightAt(gx, gz) > -0.5) continue; // must be open water
+    if (RING_XZ.some(([rx, rz]) => Math.hypot(gx - rx, gz - rz) < 100)) continue;
+    const base = 0.35 + rng() * 0.25;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glitterTex, color: 0xffe9c0, transparent: true, opacity: base, depthWrite: false,
+    }));
+    // Draw after the transparent water plane (which is centred near the
+    // camera, so depth-sorting would otherwise paint the water over these
+    // sprites and hide them); they float just above the surface, so
+    // rendering them last is geometrically correct.
+    spr.renderOrder = 2;
+    const gs = 20 + rng() * 26;
+    spr.position.set(gx, 0.5, gz);
+    spr.scale.set(gs, gs * 0.55, 1);
+    scene.add(spr);
+    glitter.push({ spr, base, phase: rng() * Math.PI * 2 });
+  }
+
+  // BIRD FLOCK — 12 small dark "V" birds circling the main island at
+  // ~85–115 m altitude. Pure scenery; slow orbit + slight bob + wing flap.
+  const birdMat = new THREE.MeshBasicMaterial({ color: 0x1e1e24, side: THREE.DoubleSide });
+  function birdWingGeo(mirror) {
+    const g = new THREE.BufferGeometry();
+    const s = mirror ? 1 : -1;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+      0, 0, 0.9, 0, 0, -0.9, s * 2.4, 0, 0.1,
+    ]), 3));
+    g.computeVertexNormals();
+    return g;
+  }
+  const birdWingL = birdWingGeo(false), birdWingR = birdWingGeo(true);
+  const birds = [];
+  for (let i = 0; i < 12; i++) {
+    const bird = new THREE.Group();
+    const wl = new THREE.Mesh(birdWingL, birdMat);
+    const wr = new THREE.Mesh(birdWingR, birdMat);
+    bird.add(wl); bird.add(wr);
+    scene.add(bird);
+    birds.push({
+      group: bird, wl, wr,
+      radius: 380 + (i % 6) * 26,
+      alt: 85 + (i % 4) * 10,
+      angle: (i / 12) * Math.PI * 2,
+      omega: 0.030 + (i % 3) * 0.006,
+      phase: rng() * Math.PI * 2,
+      flap: 5.5 + rng() * 1.5,
+    });
+  }
+  const BIRD_C = { x: 0, z: -80 }; // flock circles the main island
+
   // Soft clouds: glowing sprite blobs drifting slowly.
   const cloudTex = makeGlowTexture();
   const clouds = [];
@@ -442,6 +550,26 @@ export function buildTerrain(scene, seed) {
       }
       ep.needsUpdate = true;
       cone.rotation.z = Math.PI / 2 - 0.25 + Math.sin(t * 1.7) * 0.08;
+      // Eagle's Nest: the warm window glows a touch brighter and dimmer.
+      nestWindowGlow.material.opacity = 0.55 + Math.sin(t * 1.4) * 0.15;
+      // Sun glitter: each sparkle gently pulses out of phase.
+      for (const g of glitter) {
+        g.spr.material.opacity = g.base * (0.8 + 0.2 * Math.sin(t * 1.3 + g.phase));
+      }
+      // Bird flock: slow orbit around the island, slight bob, wing flap.
+      for (const b of birds) {
+        b.angle += b.omega * dt;
+        const bx = BIRD_C.x + Math.cos(b.angle) * b.radius;
+        const bz = BIRD_C.z + Math.sin(b.angle) * b.radius;
+        const by = b.alt + Math.sin(t * 0.9 + b.phase) * 3;
+        const nx = BIRD_C.x + Math.cos(b.angle + 0.05) * b.radius;
+        const nz = BIRD_C.z + Math.sin(b.angle + 0.05) * b.radius;
+        b.group.position.set(bx, by, bz);
+        b.group.lookAt(nx, by, nz);
+        const flap = 0.28 + Math.sin(t * b.flap + b.phase) * 0.38;
+        b.wl.rotation.z = flap;
+        b.wr.rotation.z = -flap;
+      }
     },
   };
 }
