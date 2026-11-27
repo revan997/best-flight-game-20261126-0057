@@ -27,11 +27,31 @@
   #hud-damage.high { background: #ff3b30; }
 
   #hud-flight { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  /* Old big-number panels are kept (ids still updated) but hidden: the
+     scrolling tapes replace them. */
+  #hud-tl, #hud-tr { display: none; }
+  #hud-speed-tape { position: absolute; left: 12px; top: 96px; width: 72px; height: 240px; }
+  #hud-alt-tape { position: absolute; right: 12px; top: 96px; width: 72px; height: 240px; }
+  #hud-hdg-tape { display: block; width: 280px; height: 40px; }
+  #hud-pitch { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+    width: 420px; height: 300px; }
+  #hud-objective-panel { position: absolute; top: 12px; right: 12px; min-width: 252px;
+    text-align: right; }
+  #hud-objective-line { font-size: 17px; font-weight: 800; color: #fff; margin-top: 2px;
+    text-shadow: 0 0 8px rgba(94,230,255,0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .obj-row { display: flex; gap: 18px; justify-content: flex-end; margin-top: 4px; }
+  .obj-row .big { font-size: 22px; }
+  #hud-minimap-wrap { position: absolute; right: 12px; bottom: 12px; text-align: center; }
+  #hud-minimap { border: 2px solid rgba(120,220,255,0.55); border-radius: 10px;
+    background: rgba(6,16,30,0.8); box-shadow: 0 0 14px rgba(94,230,255,0.25); }
+  #hud-sixpack-wrap { position: absolute; left: 50%; transform: translateX(-50%); bottom: 86px;
+    text-align: center; }
+  #hud-sixpack { display: block; }
   #hud-tl { position: absolute; top: 12px; left: 12px; min-width: 170px; }
   #hud-tr { position: absolute; top: 12px; right: 12px; min-width: 170px; text-align: right; }
   #hud-compass { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-    text-align: center; min-width: 210px; }
-  #hud-heading { font-size: 26px; font-weight: 800; color: #ffd24a;
+    text-align: center; min-width: 300px; padding: 6px 10px; }
+  #hud-heading { font-size: 22px; font-weight: 800; color: #ffd24a;
     text-shadow: 0 0 10px rgba(255,210,74,0.8); }
   #hud-objective { font-size: 12px; color: #eaf3ff; margin-top: 2px; }
   #hud-horizon-wrap { position: absolute; left: 12px; bottom: 86px; text-align: center; }
@@ -110,13 +130,32 @@
     <div><span class="big" id="hud-alt">0</span> <span class="unit">ft</span></div>
     <div class="unit" id="hud-vs">+0 fpm</div>
   </div>
+  <canvas id="hud-speed-tape" width="144" height="480"></canvas>
+  <canvas id="hud-alt-tape" width="144" height="480"></canvas>
+  <canvas id="hud-pitch" width="840" height="600"></canvas>
   <div id="hud-compass" class="panel">
-    <div id="hud-heading">090°</div>
+    <canvas id="hud-hdg-tape" width="560" height="80"></canvas>
+    <div id="hud-heading">HDG 090</div>
     <div id="hud-objective"></div>
+  </div>
+  <div id="hud-objective-panel" class="panel">
+    <div class="label">OBJECTIVE</div>
+    <div id="hud-objective-line">—</div>
+    <div class="obj-row">
+      <div><div class="label">TIME</div><div class="big" id="hud-time">2:30</div></div>
+      <div><div class="label">SCORE</div><div class="big" id="hud-score">0</div></div>
+    </div>
   </div>
   <div id="hud-horizon-wrap">
     <canvas id="hud-horizon" width="150" height="110"></canvas>
     <div class="label">ATTITUDE</div>
+  </div>
+  <div id="hud-minimap-wrap">
+    <canvas id="hud-minimap" width="340" height="340"></canvas>
+    <div class="label">MAP</div>
+  </div>
+  <div id="hud-sixpack-wrap">
+    <canvas id="hud-sixpack" width="720" height="128"></canvas>
   </div>
   <div id="hud-crosshair"></div>
   <div id="hud-warning"></div>
@@ -125,8 +164,6 @@
     <div class="panel"><div class="label">FUEL <span id="hud-fuel-text">100%</span></div><div class="bar"><div id="hud-fuel"></div></div></div>
     <div class="panel"><div class="label">DAMAGE <span id="hud-damage-text">0%</span></div><div class="bar"><div id="hud-damage"></div></div></div>
     <div class="panel"><div class="label">RINGS</div><div class="big" id="hud-rings" style="font-size:22px">0/8</div></div>
-    <div class="panel"><div class="label">TIME</div><div class="big" id="hud-time" style="font-size:22px">2:30</div></div>
-    <div class="panel"><div class="label">SCORE</div><div class="big" id="hud-score" style="font-size:22px">0</div></div>
   </div>
 </div>
 
