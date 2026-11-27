@@ -87,9 +87,9 @@ export function buildTerrain(scene, seed) {
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: {
-      top: { value: new THREE.Color(0x163a6e) },
-      mid: { value: new THREE.Color(0xf2a65a) },
-      low: { value: new THREE.Color(0xffd9a0) },
+      top: { value: new THREE.Color(0x0d2c60) },
+      mid: { value: new THREE.Color(0xef8a3e) },
+      low: { value: new THREE.Color(0xffc27a) },
       haze: { value: new THREE.Color(0xffc98a) },
       sunDir: { value: new THREE.Vector3(-0.72, 0.32, -0.42).normalize() },
     },
@@ -106,7 +106,7 @@ export function buildTerrain(scene, seed) {
       gl_FragColor = vec4(c, 1.0); }`,
   });
   scene.add(new THREE.Mesh(skyGeo, skyMat));
-  scene.fog = new THREE.Fog(0xf0b070, CONFIG.fogNear, CONFIG.fogFar);
+  scene.fog = new THREE.Fog(0xdfa67e, CONFIG.fogNear, CONFIG.fogFar);
 
   const sun = new THREE.DirectionalLight(0xffc27a, 2.4);
   sun.position.set(-720, 320, -420);
@@ -121,8 +121,28 @@ export function buildTerrain(scene, seed) {
     map: sunTex, color: 0xffd9a0, transparent: true, depthWrite: false, fog: false,
   }));
   sunSpr.position.set(-2900, 950, -1700);
-  sunSpr.scale.set(900, 900, 1);
+  sunSpr.scale.set(1350, 1350, 1);
   scene.add(sunSpr);
+
+  // Subtle lens flare: a few small glow sprites in a line from the sun
+  // toward the scene centre (sun at (-2900,950,-1700), fractions of the
+  // sun->origin line), with one cool ghost for contrast.
+  const flare = [];
+  for (const [fx, fy, fz, fs, fcol, fop] of [
+    [-2610, 855, -1530, 320, 0xffd9a0, 0.32],
+    [-2378, 779, -1394, 150, 0xffb27a, 0.28],
+    [-2117, 694, -1241, 90, 0xffe9c0, 0.34],
+    [-1798, 589, -1054, 210, 0xffc98a, 0.20],
+    [-1450, 475, -850, 70, 0x9fd0ff, 0.30],
+  ]) {
+    const fSpr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunTex, color: fcol, transparent: true, opacity: fop, depthWrite: false, fog: false,
+    }));
+    fSpr.position.set(fx, fy, fz);
+    fSpr.scale.set(fs, fs, 1);
+    scene.add(fSpr);
+    flare.push({ spr: fSpr, base: fop, phase: rng() * Math.PI * 2 });
+  }
 
   // Island mesh: vertex-coloured by height (sand / grass / rock / peak).
   const SIZE = 2200, SEG = 150;
@@ -171,6 +191,41 @@ export function buildTerrain(scene, seed) {
   const water = new THREE.Mesh(waterGeo, waterMat);
   water.position.y = 0;
   scene.add(water);
+
+  // Turquoise shallows: semi-transparent discs just above the water plane
+  // under each island's shore. Where terrain is above the water they are
+  // hidden; where it is shallow water they tint it turquoise, fading to
+  // deep blue offshore (the disc edge is well inside open water).
+  const shallowMat = new THREE.MeshBasicMaterial({
+    color: 0x2fd4c0, transparent: true, opacity: 0.30, depthWrite: false,
+  });
+  for (const [sx, sz, sr] of [[0, 0, 680], [-650, -520, 260], [300, -320, 270], [640, -620, 210]]) {
+    const discGeo = new THREE.CircleGeometry(sr, 48);
+    discGeo.rotateX(-Math.PI / 2);
+    const disc = new THREE.Mesh(discGeo, shallowMat);
+    disc.position.set(sx, 0.35, sz);
+    disc.renderOrder = 1;
+    scene.add(disc);
+  }
+
+  // Animated foam rings at the waterline around the main island (shore
+  // points verified against heightAt: each sits where h crosses ~0).
+  const foamRings = [];
+  const foamMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide,
+  });
+  for (const [fx, fz] of [
+    [550, 0], [400, 400], [0, 620], [-407, 407],
+    [-550, 0], [-450, -450], [0, -550], [420, -470],
+  ]) {
+    const ringGeo = new THREE.RingGeometry(16, 25, 36);
+    ringGeo.rotateX(-Math.PI / 2);
+    const fr = new THREE.Mesh(ringGeo, foamMat.clone());
+    fr.position.set(fx, 0.4, fz);
+    fr.renderOrder = 2;
+    scene.add(fr);
+    foamRings.push({ mesh: fr, base: 0.35 + rng() * 0.2, phase: rng() * Math.PI * 2 });
+  }
 
   // Runway: dark strip + white centre line + threshold marks.
   const runway = new THREE.Group();
@@ -435,6 +490,93 @@ export function buildTerrain(scene, seed) {
     scene.add(hut);
   }
 
+  // VILLAGE — 9 small houses with coloured roofs east of the runway, plus a
+  // road strip. All spots verified against heightAt (h 13–19 m, land),
+  // clear of the runway (x > 190), the beach strip and the ring course
+  // (nearest ring, ring 8 at (60, 200), is ~180 m away).
+  const houseWalls = [0xf5ead0, 0xffffff, 0xf0d8b0, 0xdfe8f0].map(
+    (col) => new THREE.MeshLambertMaterial({ color: col }));
+  const houseRoofs = [0xd23c2a, 0x2a6db0, 0x3f8f4f, 0xe8a13c].map(
+    (col) => new THREE.MeshLambertMaterial({ color: col }));
+  const villageSpots = [
+    [240, 180], [268, 205], [292, 178], [248, 232], [286, 238],
+    [312, 202], [238, 152], [318, 168], [262, 262],
+  ];
+  villageSpots.forEach(([hx, hz], vi) => {
+    const house = new THREE.Group();
+    const hy = heightAt(hx, hz);
+    const hs = 0.9 + rng() * 0.35;
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 6), houseWalls[vi % houseWalls.length]);
+    walls.position.y = 1.6; house.add(walls);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.4, 3.0, 4), houseRoofs[vi % houseRoofs.length]);
+    roof.position.y = 4.7; roof.rotation.y = Math.PI / 4; house.add(roof);
+    house.position.set(hx, hy, hz);
+    house.rotation.y = rng() * Math.PI * 2;
+    house.scale.set(hs, hs, hs);
+    scene.add(house);
+  });
+  // Road strip through the village: 3 short segments, each seated on the
+  // local terrain height so it never floats or clips.
+  const roadMat = new THREE.MeshLambertMaterial({ color: 0x6a6a66 });
+  for (const [rx, rz] of [[245, 173], [276, 185], [308, 197]]) {
+    const segGeo = new THREE.PlaneGeometry(34, 4.5);
+    segGeo.rotateX(-Math.PI / 2);
+    const seg = new THREE.Mesh(segGeo, roadMat);
+    seg.position.set(rx, heightAt(rx, rz) + 0.25, rz);
+    seg.rotation.y = -0.33;
+    scene.add(seg);
+  }
+
+  // HARBOUR — a small wooden pier on the east shore plus 3 boats anchored
+  // in the bay. Boat spots verified water (heightAt -2.6 / -3.9 / -5.6),
+  // clear of the runway, beach strip and ring course.
+  const pier = new THREE.Group();
+  const pierDeck = new THREE.Mesh(new THREE.BoxGeometry(16, 0.7, 3),
+    new THREE.MeshLambertMaterial({ color: 0x8a6a4a }));
+  pierDeck.position.y = 0.9; pier.add(pierDeck);
+  const pierPostMat = new THREE.MeshLambertMaterial({ color: 0x5a4028 });
+  for (const [px, pz] of [[-7, -1.2], [7, -1.2], [-7, 1.2], [7, 1.2]]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.6, 6), pierPostMat);
+    post.position.set(px, 0.1, pz); pier.add(post);
+  }
+  pier.position.set(495, 0, 305);
+  pier.rotation.y = 0.3;
+  scene.add(pier);
+  const boats = [];
+  const sailShape = new THREE.Shape();
+  sailShape.moveTo(0, 0); sailShape.lineTo(0, 3.6); sailShape.lineTo(2.4, 0.4); sailShape.lineTo(0, 0);
+  const sailGeo = new THREE.ShapeGeometry(sailShape);
+  const sailMat = new THREE.MeshBasicMaterial({ color: 0xf5f2ea, side: THREE.DoubleSide });
+  const hullMat = new THREE.MeshLambertMaterial({ color: 0x7a4a28 });
+  const hullMat2 = new THREE.MeshLambertMaterial({ color: 0x4a6a8a });
+  for (let bi = 0; bi < 3; bi++) {
+    const [bx, bz] = [[520, 300], [540, 270], [520, 360]][bi];
+    const hdg = [-0.6, 0.4, 1.2][bi];
+    const boat = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(7, 1.4, 2.6), bi === 1 ? hullMat2 : hullMat);
+    hull.position.y = 0.6; boat.add(hull);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 5.5, 6),
+      new THREE.MeshLambertMaterial({ color: 0x6a4a30 }));
+    mast.position.set(0.8, 4.0, 0); boat.add(mast);
+    const sail = new THREE.Mesh(sailGeo, sailMat);
+    sail.position.set(0.9, 1.6, 0.05); boat.add(sail);
+    boat.position.set(bx, 0.55, bz);
+    boat.rotation.y = hdg;
+    scene.add(boat);
+    // Faint white wake strip trailing behind the boat.
+    const wakeGeo = new THREE.PlaneGeometry(20, 2.2);
+    wakeGeo.rotateX(-Math.PI / 2);
+    const wakeMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.28, depthWrite: false,
+    });
+    const wake = new THREE.Mesh(wakeGeo, wakeMat);
+    wake.position.set(bx - Math.cos(hdg) * 12, 0.45, bz + Math.sin(hdg) * 12);
+    wake.rotation.y = hdg;
+    wake.renderOrder = 2;
+    scene.add(wake);
+    boats.push({ group: boat, wakeMat, phase: rng() * Math.PI * 2, baseY: 0.55 });
+  }
+
   // MOUNT EMBER — the archipelago's volcano, on the far north-east island.
   // Pure scenery: a separate decorative mesh, NOT part of heightAt(), so it
   // cannot change the flight model, the autopilot, or any landing.
@@ -445,11 +587,18 @@ export function buildTerrain(scene, seed) {
   const emberCone = new THREE.Mesh(new THREE.ConeGeometry(EMBER_R, EMBER_H, 24), emberRock);
   emberCone.position.set(EMBER_X, emberBase + EMBER_H / 2, EMBER_Z);
   scene.add(emberCone);
-  // Darker lava streaks running down the cone flanks.
-  const emberLavaMat = new THREE.MeshLambertMaterial({ color: 0x6e2a12 });
+  // Dark lava streaks running down the cone flanks; 3 of the 5 glow orange
+  // with pulsing emissive (stored in lavaGlowMats, animated in update).
+  const emberLavaDark = new THREE.MeshLambertMaterial({ color: 0x6e2a12 });
+  const lavaGlowMats = [];
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + 0.4;
-    const streak = new THREE.Mesh(new THREE.ConeGeometry(7, EMBER_H * 0.72, 6), emberLavaMat);
+    let mat = emberLavaDark;
+    if (i % 2 === 0) {
+      mat = new THREE.MeshLambertMaterial({ color: 0x4a1a08, emissive: 0xff5a00, emissiveIntensity: 1.2 });
+      lavaGlowMats.push(mat);
+    }
+    const streak = new THREE.Mesh(new THREE.ConeGeometry(7, EMBER_H * 0.72, 6), mat);
     const sr = EMBER_R * 0.52;
     streak.position.set(EMBER_X + Math.cos(a) * sr, emberBase + EMBER_H * 0.36, EMBER_Z + Math.sin(a) * sr);
     streak.rotation.z = Math.cos(a) * 0.35;
@@ -474,24 +623,25 @@ export function buildTerrain(scene, seed) {
   emberGlow.position.set(EMBER_X, craterY + 6, EMBER_Z);
   emberGlow.scale.set(300, 210, 1);
   scene.add(emberGlow);
-  // Smoke column: dark grey sprite blobs rising from the crater and
+  // Smoke column: taller plume (to ~300 m above the crater), more sprites,
   // drifting with the wind, looping back to the crater when they get high.
+  // Low sprites catch warm orange light on the sun side; high ones are grey.
   const smokeTex = makeGlowTexture();
   const smoke = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 12; i++) {
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: smokeTex, color: 0x3a3632, transparent: true, opacity: 0.5, depthWrite: false, fog: false,
+      map: smokeTex, color: i < 4 ? 0x7a5240 : 0x3a3632, transparent: true, opacity: 0.5, depthWrite: false, fog: false,
     }));
-    const f = i / 7;
-    spr.position.set(EMBER_X + f * 55, craterY + 8 + f * 170, EMBER_Z - f * 18);
-    const s = 46 + f * 62;
+    const f = i / 12;
+    spr.position.set(EMBER_X + f * 55, craterY + 8 + f * 290, EMBER_Z - f * 18);
+    const s = 46 + f * 95;
     spr.scale.set(s, s * 0.8, 1);
     spr.userData.rise = 7 + rng() * 5;
-    spr.userData.top = craterY + 185;
+    spr.userData.top = craterY + 300;
     scene.add(spr); smoke.push(spr);
   }
-  // Ember particles: ~40 tiny glowing dots rising out of the crater.
-  const EMBER_N = 40;
+  // Ember particles: ~90 tiny glowing dots rising out of the crater.
+  const EMBER_N = 90;
   const emberPos = new Float32Array(EMBER_N * 3);
   const emberSeed = [];
   for (let i = 0; i < EMBER_N; i++) {
@@ -503,7 +653,7 @@ export function buildTerrain(scene, seed) {
   const emberGeo = new THREE.BufferGeometry();
   emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
   const emberPts = new THREE.Points(emberGeo, new THREE.PointsMaterial({
-    color: 0xffa02e, size: 3.2, transparent: true, opacity: 0.95, depthWrite: false, fog: false,
+    color: 0xffb03a, size: 4.4, transparent: true, opacity: 0.95, depthWrite: false, fog: false,
   }));
   scene.add(emberPts);
 
@@ -630,6 +780,29 @@ export function buildTerrain(scene, seed) {
     scene.add(spr); clouds.push(spr);
   }
 
+  // Low cloud layer: sparse sprites at 40–60 m over open water, below
+  // typical flight altitude. Kept clear of the runway approach corridor
+  // (x -220..220, z 60..600), the ring course (120 m exclusion) and the
+  // cover camera (60, 350). They join `clouds` so they drift in update.
+  const LOW_RINGS = [[260, -40], [480, -380], [120, -620], [-380, -560], [-650, -300], [-480, 180], [-120, 420], [60, 200]];
+  let lGuard = 0;
+  while (clouds.length < 44 + 14 && lGuard++ < 400) {
+    const a = rng() * Math.PI * 2, r = 600 + rng() * 700;
+    const lx = Math.cos(a) * r, lz = Math.sin(a) * r;
+    if (heightAt(lx, lz) > -0.5) continue; // over water only
+    if (lx > -220 && lx < 220 && lz > 60 && lz < 600) continue; // approach corridor
+    if (Math.hypot(lx - 60, lz - 350) < 250) continue; // cover camera
+    if (LOW_RINGS.some(([rx, rz]) => Math.hypot(lx - rx, lz - rz) < 120)) continue;
+    const lspr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: cloudTex, color: 0xfff2dd, transparent: true, opacity: 0.35 + rng() * 0.2, depthWrite: false,
+    }));
+    lspr.position.set(lx, 40 + rng() * 20, lz);
+    const ls = 90 + rng() * 130;
+    lspr.scale.set(ls, ls * (0.3 + rng() * 0.2), 1);
+    lspr.userData.drift = 1.0 + rng() * 2.0;
+    scene.add(lspr); clouds.push(lspr);
+  }
+
   function isRunway(x, z) { return x >= RUNWAY.x0 && x <= RUNWAY.x1 && z >= RUNWAY.z0 && z <= RUNWAY.z1; }
   function isBeach(x, z) { return x >= BEACH.x0 && x <= BEACH.x1 && z >= BEACH.z0 && z <= BEACH.z1; }
 
@@ -657,12 +830,32 @@ export function buildTerrain(scene, seed) {
           sp.position.x = EMBER_X;
         }
       }
+      // Mount Ember lava rivulets pulse orange.
+      for (let li = 0; li < lavaGlowMats.length; li++) {
+        lavaGlowMats[li].emissiveIntensity = 1.05 + Math.sin(t * 2.6 + li * 1.3) * 0.45;
+      }
+      // Lens flare breathes very gently.
+      for (const f of flare) {
+        f.spr.material.opacity = f.base * (0.85 + 0.15 * Math.sin(t * 0.8 + f.phase));
+      }
+      // Foam rings pulse at the shoreline.
+      for (const fr of foamRings) {
+        fr.mesh.material.opacity = fr.base * (0.75 + 0.25 * Math.sin(t * 0.9 + fr.phase));
+        const fs = 1 + 0.06 * Math.sin(t * 0.9 + fr.phase);
+        fr.mesh.scale.set(fs, 1, fs);
+      }
+      // Harbour boats bob gently; their wakes fade in and out.
+      for (const b of boats) {
+        b.group.position.y = b.baseY + Math.sin(t * 0.8 + b.phase) * 0.12;
+        b.group.rotation.z = Math.sin(t * 0.7 + b.phase) * 0.03;
+        b.wakeMat.opacity = 0.22 + 0.08 * Math.sin(t * 1.1 + b.phase);
+      }
       emberGlow.material.opacity = 0.75 + Math.sin(t * 2.2) * 0.12;
       const ep = emberGeo.attributes.position;
       for (let i = 0; i < EMBER_N; i++) {
         const s = emberSeed[i];
         s.y += s.v * dt;
-        if (s.y > 58) { s.y = 0; s.r = rng() * 22; s.a = rng() * Math.PI * 2; }
+        if (s.y > 75) { s.y = 0; s.r = rng() * 22; s.a = rng() * Math.PI * 2; }
         ep.setXYZ(i, EMBER_X + Math.cos(s.a) * s.r, craterY + s.y, EMBER_Z + Math.sin(s.a) * s.r);
       }
       ep.needsUpdate = true;
