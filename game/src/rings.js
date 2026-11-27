@@ -113,12 +113,12 @@ export function buildRingCourse(scene, mission) {
     const chevrons = new THREE.Group();
     const chevBase = [];
     const chevMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
-    const chevGeo = new THREE.ConeGeometry(3.4, 9, 4);
+    const chevGeo = new THREE.ConeGeometry(1.2, 3.2, 4);
     for (let k = 0; k < 3; k++) {
       const c = new THREE.Mesh(chevGeo, chevMat);
       c.quaternion.copy(torus.quaternion);
       c.rotateX(-Math.PI / 2); // cone tip points through the ring (-Z local)
-      const p = new THREE.Vector3(def.x, def.y, def.z).addScaledVector(dir, 24 + k * 15);
+      const p = new THREE.Vector3(def.x, def.y, def.z).addScaledVector(dir, 12 + k * 8);
       c.position.copy(p);
       chevBase.push(p);
       chevrons.add(c);
@@ -206,6 +206,9 @@ export function setRingStates(rings, nextIndex) {
       r.pathMat.opacity = 0;
       if (r.fuelIcon) r.fuelIcon.material.opacity = 0.85;
     }
+    // RWY distance label: show only while the final ring is still ahead
+    // (not the next ring, not passed) so it never overlaps the HUD on final.
+    if (r.distLabel) r.distLabel.visible = !r.passed && i !== nextIndex;
   });
 }
 

@@ -47,7 +47,7 @@ export function createHud() {
   let frame = 0;
 
   // ---- Minimap static layer (drawn once; islands/runway/beach/volcano) ----
-  const MAP_W = 340, MAP_H = 340;
+  const MAP_W = 200, MAP_H = 200;
   const mapStatic = document.createElement('canvas');
   mapStatic.width = MAP_W; mapStatic.height = MAP_H;
   const MAP_X0 = -950, MAP_X1 = 950, MAP_Z0 = -850, MAP_Z1 = 750;
@@ -302,7 +302,7 @@ export function createHud() {
     c.strokeStyle = 'rgba(255,210,74,0.85)'; c.lineWidth = 2.5; c.stroke();
     c.strokeStyle = 'rgba(255,190,80,0.25)'; c.lineWidth = 6;
     c.beginPath(); c.arc(cx, cy, r + 4, 0, Math.PI * 2); c.stroke();
-    c.fillStyle = AMBER; c.font = 'bold 13px sans-serif'; c.textAlign = 'center';
+    c.fillStyle = AMBER; c.font = 'bold 11px sans-serif'; c.textAlign = 'center';
     c.fillText(label, cx, cy + r - 4);
   }
   function needle(c, cx, cy, angleDeg, len, color, width) {
@@ -323,16 +323,15 @@ export function createHud() {
       c.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
       c.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
       c.stroke();
-      if (major && fmt) {
-        c.fillStyle = '#dff3ff'; c.font = 'bold 13px sans-serif'; c.textAlign = 'center';
-        c.fillText(fmt(v), cx + Math.cos(a) * (r - 24), cy + Math.sin(a) * (r - 24) + 5);
-      }
+      // No number labels: at this gauge size they overlap into an unreadable
+      // jumble. The needle + the digital speed/alt/VSI tapes carry the value.
+
     }
   }
   function drawSixPack(state, hdg, kt, ft, vsFpm) {
-    const c = packCtx, W = 720, H = 128;
+    const c = packCtx, W = 480, H = 96;
     c.clearRect(0, 0, W, H);
-    const R = 50, CY = 58, xs = [60, 180, 300, 420, 540, 660];
+    const R = 34, CY = 44, xs = [40, 120, 200, 280, 360, 440];
     // 1 — Airspeed (0–160 kt, red arc below 55).
     gaugeFace(c, xs[0], CY, R, 'AIRSPEED');
     c.strokeStyle = '#ff3b30'; c.lineWidth = 5;
@@ -351,33 +350,34 @@ export function createHud() {
     c.restore();
     c.strokeStyle = AMBER; c.lineWidth = 3;
     c.beginPath();
-    c.moveTo(xs[1] - 26, CY); c.lineTo(xs[1] - 8, CY);
-    c.moveTo(xs[1] + 8, CY); c.lineTo(xs[1] + 26, CY);
+    c.moveTo(xs[1] - R * 0.52, CY); c.lineTo(xs[1] - R * 0.16, CY);
+    c.moveTo(xs[1] + R * 0.16, CY); c.lineTo(xs[1] + R * 0.52, CY);
     c.stroke();
     // 3 — Altimeter (needle = 1000 ft/rev, short needle = 100 ft).
     gaugeFace(c, xs[2], CY, R, 'ALT');
     dialTicks(c, xs[2], CY, R, 0, 10, 1, 1, (v) => String(v));
     needle(c, xs[2], CY, (ft % 1000) / 1000 * 360, R - 16, '#ffffff', 3);
-    needle(c, xs[2], CY, (ft % 100) / 100 * 360, R - 30, CYAN, 2);
+    needle(c, xs[2], CY, (ft % 100) / 100 * 360, R * 0.32, CYAN, 2);
     // 4 — Turn coordinator (needle = bank, ball = slip approx).
     gaugeFace(c, xs[3], CY, R, 'TURN');
     c.strokeStyle = '#dff3ff'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(xs[3] - 30, CY - 26); c.lineTo(xs[3] + 30, CY - 26); c.stroke();
+    c.beginPath(); c.moveTo(xs[3] - R * 0.6, CY - R * 0.52); c.lineTo(xs[3] + R * 0.6, CY - R * 0.52); c.stroke();
     const bankDeg = clamp(state.bank * 180 / Math.PI, -45, 45);
     needle(c, xs[3], CY, bankDeg * 1.6, R - 14, '#ffffff', 3);
-    const ballX = xs[3] + clamp(-state.bank * 30, -24, 24);
-    c.fillStyle = '#ffffff'; c.beginPath(); c.arc(ballX, CY + 26, 6, 0, Math.PI * 2); c.fill();
+    const ballX = xs[3] + clamp(-state.bank * 20, -R * 0.7, R * 0.7);
+    c.fillStyle = '#ffffff'; c.beginPath(); c.arc(ballX, CY + R * 0.52, 4, 0, Math.PI * 2); c.fill();
     // 5 — Heading (rotating card, fixed lubber).
     gaugeFace(c, xs[4], CY, R, 'HDG');
     c.save();
     c.beginPath(); c.arc(xs[4], CY, R - 3, 0, Math.PI * 2); c.clip();
     c.translate(xs[4], CY); c.rotate(-hdg * Math.PI / 180);
-    c.textAlign = 'center'; c.font = 'bold 15px sans-serif';
+    c.textAlign = 'center'; c.font = 'bold 12px sans-serif';
     for (let d = 0; d < 360; d += 30) {
       const a = (d - 90) * Math.PI / 180;
       const card = d % 90 === 0;
-      c.fillStyle = card ? AMBER : '#dff3ff';
-      c.fillText(card ? ['N', 'E', 'S', 'W'][d / 90] : String(d).padStart(3, '0'),
+      if (!card) continue; // degree numbers overlap at this gauge size; N/E/S/W only
+      c.fillStyle = AMBER;
+      c.fillText(['N', 'E', 'S', 'W'][d / 90],
         Math.cos(a) * (R - 14), Math.sin(a) * (R - 14) + 5);
     }
     c.restore();

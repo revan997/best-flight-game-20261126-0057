@@ -427,8 +427,8 @@ function updateCamera(dt, t) {
   // (first frames / staged shots) so the plane is never a speck on screen.
   // The look point sits a few metres ABOVE the plane so it reads in the
   // lower-centre third and the horizon lands ~40% from the top.
-  const dist = 16 + flight.speed * 0.08;
-  const height = 5 + flight.speed * 0.03;
+  const dist = 10 + flight.speed * 0.04;
+  const height = 3 + flight.speed * 0.015;
   const tx = flight.x - fwd.x * dist + look.x * 8;
   const tz = flight.z - fwd.z * dist;
   const ty = flight.y + height + look.y * 4;
@@ -445,7 +445,7 @@ function updateCamera(dt, t) {
   // target stays in frame while the plane holds the lower-centre third.
   let lx = flight.x + fwd.x * 26;
   let lz = flight.z + fwd.z * 26;
-  let ly = flight.y + 4;
+  let ly = flight.y + 1;
   if (mission && course) {
     const next = course.rings.find((r) => !r.passed);
     const obj = next ? next.def : { x: 0, y: 12, z: 120 };
