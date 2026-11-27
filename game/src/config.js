@@ -36,8 +36,8 @@ export const CONFIG = {
   waterLevel: 0,
   runwayHeight: 10,
   sunElevation: 0.32,    // rad — low golden-hour sun
-  fogNear: 400,
-  fogFar: 2600,
+  fogNear: 300,
+  fogFar: 2000,
 };
 
 export const MISSIONS = [
