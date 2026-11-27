@@ -182,18 +182,135 @@ export function buildTerrain(scene, seed) {
   runway.add(strip);
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (let x = -150; x <= 150; x += 30) {
-    const dash = new THREE.Mesh(new THREE.PlaneGeometry(14, 1.6), lineMat);
+    const dash = new THREE.Mesh(new THREE.PlaneGeometry(16, 2.0), lineMat);
     dash.rotation.x = -Math.PI / 2;
     dash.position.set(x, RUNWAY.y + 0.3, 120);
     runway.add(dash);
   }
+  // Threshold piano keys: wider + brighter than before (5 bars per end).
   for (const x of [-164, 164]) {
     for (let k = -2; k <= 2; k++) {
-      const bar = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.8), lineMat);
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), lineMat);
       bar.rotation.x = -Math.PI / 2;
       bar.position.set(x, RUNWAY.y + 0.3, 120 + k * 4.5);
       runway.add(bar);
     }
+  }
+  // Touchdown zone markings: pairs of white bars either side of centreline.
+  for (const x of [-120, -80, 80, 120]) {
+    for (const dz of [-6.5, 6.5]) {
+      const tz = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.2), lineMat);
+      tz.rotation.x = -Math.PI / 2;
+      tz.position.set(x, RUNWAY.y + 0.3, 120 + dz);
+      runway.add(tz);
+    }
+  }
+  // Painted runway number '27' at the west threshold, readable from the air
+  // on approach (texture top points east, digits run north-to-south).
+  {
+    const cv = document.createElement('canvas');
+    cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 150px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('27', 128, 134);
+    const tex = new THREE.CanvasTexture(cv);
+    const num = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 16),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    num.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
+    num.position.set(-140, RUNWAY.y + 0.35, 120);
+    runway.add(num);
+  }
+  // Runway edge lights: small emissive amber-white spheres, ~25 m spacing.
+  {
+    const edgeGeo = new THREE.SphereGeometry(0.55, 8, 6);
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffe6a0 });
+    for (let x = -165; x <= 165; x += 27.5) {
+      for (const z of [108.5, 131.5]) {
+        const l = new THREE.Mesh(edgeGeo, edgeMat);
+        l.position.set(x, RUNWAY.y + 0.6, z);
+        runway.add(l);
+      }
+    }
+  }
+  // Approach-light row: glowing white lights extending west from threshold.
+  {
+    const appGeo = new THREE.SphereGeometry(0.9, 8, 6);
+    const appMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (const x of [-180, -194, -208, -222, -236]) {
+      const l = new THREE.Mesh(appGeo, appMat);
+      l.position.set(x, RUNWAY.y + 0.7, 120);
+      runway.add(l);
+    }
+    // Crossbar at the middle approach light.
+    for (const z of [112, 128]) {
+      const l = new THREE.Mesh(appGeo, appMat);
+      l.position.set(-208, RUNWAY.y + 0.7, z);
+      runway.add(l);
+    }
+  }
+  // PAPI lights: 4 small boxes beside the threshold (2 white, 2 red).
+  {
+    const papiGeo = new THREE.BoxGeometry(1.4, 1.0, 1.0);
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const redMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    const papiCols = [whiteMat, whiteMat, redMat, redMat];
+    for (let k = 0; k < 4; k++) {
+      const p = new THREE.Mesh(papiGeo, papiCols[k]);
+      p.position.set(-150, RUNWAY.y + 0.8, 139.5 + k * 2);
+      runway.add(p);
+    }
+  }
+  // Hangar beside the strip (north side, clear of the landing path).
+  {
+    const hangarMat = new THREE.MeshLambertMaterial({ color: 0x8a97a3 });
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(26, 7, 15), hangarMat);
+    walls.position.set(70, RUNWAY.y + 3.5, 86);
+    runway.add(walls);
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x5d6b78 });
+    for (const s of [-1, 1]) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(26, 0.6, 8.6), roofMat);
+      slab.rotation.x = s * 0.55;
+      slab.position.set(70, RUNWAY.y + 7.9, 86 + s * 3.6);
+      runway.add(slab);
+    }
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 5.5),
+      new THREE.MeshLambertMaterial({ color: 0x2e3438 }));
+    door.position.set(70, RUNWAY.y + 2.75, 86 + 7.6);
+    runway.add(door);
+  }
+  // Fuel truck parked near the hangar (north side, clear of the strip).
+  {
+    const truck = new THREE.Group();
+    const chassis = new THREE.Mesh(
+      new THREE.BoxGeometry(7, 1.2, 2.6),
+      new THREE.MeshLambertMaterial({ color: 0x333333 }));
+    chassis.position.y = 0.9;
+    truck.add(chassis);
+    const tank = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.3, 1.3, 5, 12),
+      new THREE.MeshLambertMaterial({ color: 0xd8d8d8 }));
+    tank.rotation.z = Math.PI / 2;
+    tank.position.set(-0.6, 2.6, 0);
+    truck.add(tank);
+    const cab = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 2.0, 2.4),
+      new THREE.MeshLambertMaterial({ color: 0xff7a2a }));
+    cab.position.set(4.0, 1.8, 0);
+    truck.add(cab);
+    const wheelGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.5, 10);
+    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    for (const [wx, wz] of [[-2.5, 1.3], [-2.5, -1.3], [2.5, 1.3], [3.2, -1.3]]) {
+      const w = new THREE.Mesh(wheelGeo, wheelMat);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(wx, 0.6, wz);
+      truck.add(w);
+    }
+    truck.position.set(28, RUNWAY.y, 92);
+    runway.add(truck);
   }
   scene.add(runway);
 
