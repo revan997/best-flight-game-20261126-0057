@@ -132,8 +132,11 @@ function stageShot() {
     return;
   }
   if (SHOT === 'cover') {
-    // Final approach to ring 8: ring ahead, runway beyond it, island in frame.
-    Object.assign(flight, { x: 60, y: 45, z: 350, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 55, throttle: 0.7, onGround: false, airborne: true });
+    // Hero: final approach to ring 8, 130 m out — plane lower-centre, ring 8
+    // centred ahead, runway beyond it, Mount Ember (NE) in the background
+    // right of frame, low sun giving rim light + water glitter. Slight bank
+    // for a dynamic hero feel; heading stays north up the approach line.
+    Object.assign(flight, { x: 60, y: 48, z: 330, heading: -Math.PI / 2, pitch: 0, bank: 0.12, speed: 55, throttle: 0.7, onGround: false, airborne: true });
     mission.ringsDone = 7;
     mission.timeLeft = 62; mission.score = 700;
     // Keep the HUD clock consistent with the staged progress: 7 rings banked
@@ -142,8 +145,10 @@ function stageShot() {
     course.rings.forEach((r, i) => { if (i < 7) r.passed = true; });
     setRingStates(course.rings, 7);
   } else if (SHOT === 'rings') {
-    // Close pass: 65 m out from ring 8, dead on its centre line.
-    Object.assign(flight, { x: 60, y: 60, z: 265, heading: -Math.PI / 2, pitch: 0, bank: 0, speed: 60, throttle: 0.8, onGround: false, airborne: true });
+    // Close pass: 45 m out from ring 8, dead on its centre line — the ring
+    // fills the centre of frame and the plane is large, not a speck, with
+    // the archipelago + Ember behind the gate.
+    Object.assign(flight, { x: 60, y: 58, z: 245, heading: -Math.PI / 2, pitch: 0, bank: 0.1, speed: 60, throttle: 0.8, onGround: false, airborne: true });
     mission.ringsDone = 7;
     mission.timeLeft = 58; mission.score = 700;
     mission.timeBonusTotal = 70; mission.elapsed = 150 + 70 - 58;
@@ -151,8 +156,9 @@ function stageShot() {
     setRingStates(course.rings, 7);
   } else if (SHOT === 'landing') {
     // Final approach along the runway (heading east, down the strip): gear
-    // down, 10 m above the deck, 250 m of runway ahead.
-    Object.assign(flight, { x: -80, y: 20, z: 120, heading: 0, pitch: -0.05, bank: 0, speed: 42, throttle: 0.25, onGround: false, airborne: true, gearDown: true });
+    // down, 8 m above the deck, 260 m of runway ahead, plane lower-centre
+    // with threshold markings + PAPI ahead.
+    Object.assign(flight, { x: -90, y: 18, z: 120, heading: 0, pitch: -0.03, bank: 0, speed: 42, throttle: 0.25, onGround: false, airborne: true, gearDown: true });
     mission.ringsDone = 8;
     mission.timeLeft = 41; mission.score = 800;
     mission.timeBonusTotal = 80; mission.elapsed = 150 + 80 - 41;
@@ -393,10 +399,16 @@ function updateCamera(dt, t) {
   const look = input.lookDelta();
   const fwd = { x: Math.cos(flight.heading), z: Math.sin(flight.heading) };
   if (screen === 'menu') {
-    // Parked beauty shot: low three-quarter view of the plane on the runway.
+    // Cinematic slow orbit around the parked plane on the runway. The camera
+    // starts SW of the strip looking NE, high enough that Mount Ember + the
+    // archipelago clear the foreground hills, with the low western sun
+    // glittering on the water at the frame edges. The look point is biased
+    // NE so the plane sits left of centre, clear of the right-docked menu
+    // card. One revolution ~2 min.
     const px = flight.x, py = flight.y, pz = flight.z;
-    camera.position.set(px - 26, py + 7, pz + 26);
-    camera.lookAt(px + 8, py + 2, pz);
+    const a = 5.35 + t * 0.05;
+    camera.position.set(px + Math.sin(a) * 34, py + 16, pz + Math.cos(a) * 34);
+    camera.lookAt(px + 14, py + 2, pz - 6);
     return;
   }
   if (cameraMode === 'cockpit') {
@@ -413,6 +425,8 @@ function updateCamera(dt, t) {
   }
   // Chase: behind and above, eased toward its target. Snap when far away
   // (first frames / staged shots) so the plane is never a speck on screen.
+  // The look point sits a few metres ABOVE the plane so it reads in the
+  // lower-centre third and the horizon lands ~40% from the top.
   const dist = 16 + flight.speed * 0.08;
   const height = 5 + flight.speed * 0.03;
   const tx = flight.x - fwd.x * dist + look.x * 8;
@@ -426,7 +440,22 @@ function updateCamera(dt, t) {
     camera.position.y += (ty - camera.position.y) * Math.min(1, dt * 5);
     camera.position.z += (tz - camera.position.z) * Math.min(1, dt * 5);
   }
-  camera.lookAt(flight.x + fwd.x * 26, flight.y + 1.5, flight.z + fwd.z * 26);
+  // Look-toward-next-objective: bias the look point a few metres toward the
+  // next ring (or the runway threshold once the course is done) so the
+  // target stays in frame while the plane holds the lower-centre third.
+  let lx = flight.x + fwd.x * 26;
+  let lz = flight.z + fwd.z * 26;
+  let ly = flight.y + 4;
+  if (mission && course) {
+    const next = course.rings.find((r) => !r.passed);
+    const obj = next ? next.def : { x: 0, y: 12, z: 120 };
+    const dx = obj.x - flight.x, dz = obj.z - flight.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    lx += (dx / dl) * 10;
+    lz += (dz / dl) * 10;
+    ly += Math.max(-3, Math.min(3, (obj.y - flight.y) * 0.15));
+  }
+  camera.lookAt(lx, ly, lz);
 }
 
 function animate() {
@@ -450,6 +479,9 @@ function animate() {
     update(dt, t);
   }
   terrain.update(dt, t);
+  // Ground height under the plane for the W3 water/ground blob shadow
+  // (aircraft.js reads state.groundY when present; 0 over water).
+  flight.groundY = Math.max(0, terrain.heightAt(flight.x, flight.z));
   updateAircraft(aircraft, flight, dt);
   updateCamera(dt, t);
   if (screen === 'flying' || screen === 'paused' || screen === 'landed' || screen === 'crashed') {

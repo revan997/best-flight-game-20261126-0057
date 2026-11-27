@@ -57,13 +57,16 @@
   #hud-message.on { display: block; }
 
   .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center;
-    justify-content: center; background: rgba(6, 12, 26, 0.45); }
+    justify-content: center; background: rgba(6, 12, 26, 0.18); }
   /* Menu card docks right so the parked plane shows on the left of the frame. */
   #hud-menu { justify-content: flex-end; }
   #hud-menu .card { margin-right: 36px; max-width: 560px; }
-  .card { background: rgba(8, 18, 34, 0.88); border: 1px solid rgba(255,210,74,0.6);
+  /* Semi-transparent so the live 3D scene shows through; blur + shadow keep text legible. */
+  .card { background: rgba(8, 18, 34, 0.55); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,210,74,0.6);
     border-radius: 16px; padding: 28px 34px; max-width: 640px; width: calc(100% - 40px);
-    text-align: center; box-shadow: 0 0 40px rgba(255,170,60,0.3); }
+    text-align: center; box-shadow: 0 0 40px rgba(255,170,60,0.3);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9); }
   .card h1 { font-size: 44px; letter-spacing: 3px; color: #ffd24a;
     text-shadow: 0 0 18px rgba(255,180,60,0.8); }
   .card h2 { font-size: 30px; color: #ffd24a; margin-bottom: 8px; }
